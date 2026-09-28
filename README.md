@@ -1,0 +1,1 @@
+Roche is an elegant, lightweight native macOS GUI built with SwiftUI, serving as a standalone wrapper for the open-source Mole CLI (https://github.com/tw93/mole) system cleaner & monitor. Roche transforms raw terminal telemetry into a clean, real-time dashboard while keeping system maintenance safe, modular, and effortless.
