@@ -3,13 +3,24 @@ import Foundation
 public nonisolated final class MockMoleClient: MoleClientProtocol, Sendable {
     public let shouldThrowError: Bool
     public let mockSnapshot: MetricsSnapshot
+    public let mockEngineInfo: MoleEngineInfo
 
     public init(
         shouldThrowError: Bool = false,
-        mockSnapshot: MetricsSnapshot = MockMoleClient.sampleSnapshot
+        mockSnapshot: MetricsSnapshot = MockMoleClient.sampleSnapshot,
+        mockEngineInfo: MoleEngineInfo = MoleEngineInfo(
+            source: .embedded,
+            executablePath: "/Applications/Roche.app/Contents/Resources/mole/bin/status-go",
+            version: "1.56.1 (Mock arm64)"
+        )
     ) {
         self.shouldThrowError = shouldThrowError
         self.mockSnapshot = mockSnapshot
+        self.mockEngineInfo = mockEngineInfo
+    }
+
+    public var engineInfo: MoleEngineInfo {
+        mockEngineInfo
     }
 
     public func fetchMetrics() async throws -> MetricsSnapshot {
@@ -22,6 +33,89 @@ public nonisolated final class MockMoleClient: MoleClientProtocol, Sendable {
 
         return mockSnapshot
     }
+
+    public func scanCleanables() async throws -> CleanScanResult {
+        try await Task.sleep(nanoseconds: 400_000_000)
+        if shouldThrowError {
+            throw MoleError.executableNotFound
+        }
+        return MockMoleClient.sampleScanResult
+    }
+
+    public func performClean(categories: Set<CleanCategoryKind>) async throws -> CleanExecutionResult {
+        try await Task.sleep(nanoseconds: 600_000_000)
+        if shouldThrowError {
+            throw MoleError.processExecutionFailed(exitCode: 1, stderr: "Mock cleaning error")
+        }
+
+        let reclaimed = MockMoleClient.sampleScanResult.categories
+            .filter { categories.contains($0.type) }
+            .reduce(UInt64(0)) { $0 + $1.sizeBytes }
+
+        let itemsCount = MockMoleClient.sampleScanResult.categories
+            .filter { categories.contains($0.type) }
+            .reduce(0) { $0 + $1.itemCount }
+
+        return CleanExecutionResult(
+            reclaimedBytes: reclaimed,
+            cleanedCategories: Array(categories),
+            itemsRemovedCount: itemsCount,
+            cleanedAt: Date(),
+            message: "Đã dọn dẹp thành công \(itemsCount) mục và giải phóng dung lượng."
+        )
+    }
+
+    public static let sampleScanResult = CleanScanResult(
+        categories: [
+            CleanCategory(
+                type: .dev,
+                sizeBytes: 3_670_000_000,
+                itemCount: 84,
+                items: [
+                    CleanItem(path: "/Users/dev/Library/Developer/Xcode/DerivedData", name: "Xcode DerivedData", sizeBytes: 1_850_000_000, details: "7 projects"),
+                    CleanItem(path: "/Users/dev/.npm/_cacache", name: "npm cache", sizeBytes: 1_210_000_000, details: "Content cache"),
+                    CleanItem(path: "/Users/dev/.cargo/registry/cache", name: "Cargo cache", sizeBytes: 380_000_000, details: "Crates registry"),
+                    CleanItem(path: "/var/folders/C/clang/ModuleCache", name: "Clang module cache", sizeBytes: 230_000_000, details: "C/C++ precompiled modules")
+                ],
+                isSelected: true
+            ),
+            CleanCategory(
+                type: .appCaches,
+                sizeBytes: 2_310_000_000,
+                itemCount: 142,
+                items: [
+                    CleanItem(path: "/Users/dev/Library/Caches/Google/Chrome", name: "Google Chrome Cache", sizeBytes: 1_450_000_000, details: "Web caches & profiles"),
+                    CleanItem(path: "/Users/dev/Library/Caches/GeoServices", name: "Maps GeoServices Tile Cache", sizeBytes: 520_000_000, details: "Offline map tiles"),
+                    CleanItem(path: "/Users/dev/Library/Caches/com.apple.helpd", name: "macOS Help System Cache", sizeBytes: 340_000_000, details: "Help docs cache")
+                ],
+                isSelected: true
+            ),
+            CleanCategory(
+                type: .logs,
+                sizeBytes: 280_000_000,
+                itemCount: 65,
+                items: [
+                    CleanItem(path: "/Users/dev/Library/Logs/DiagnosticReports", name: "Diagnostic & Crash Reports", sizeBytes: 145_000_000, details: "System crash logs"),
+                    CleanItem(path: "/Users/dev/Library/Logs/CoreSimulator", name: "CoreSimulator Logs", sizeBytes: 85_000_000, details: "Simulator runtime logs"),
+                    CleanItem(path: "/Users/dev/Library/Logs/CreativeCloud", name: "Creative Cloud Logs", sizeBytes: 50_000_000, details: "Updater logs")
+                ],
+                isSelected: true
+            ),
+            CleanCategory(
+                type: .trash,
+                sizeBytes: 1_240_000_000,
+                itemCount: 18,
+                items: [
+                    CleanItem(path: "/Users/dev/.Trash/Old-Project-Backup.zip", name: "Old-Project-Backup.zip", sizeBytes: 780_000_000, details: "Zip archive"),
+                    CleanItem(path: "/Users/dev/.Trash/Installer.dmg", name: "Installer.dmg", sizeBytes: 460_000_000, details: "Disk image")
+                ],
+                isSelected: true
+            )
+        ],
+        totalSizeBytes: 7_500_000_000,
+        totalItemsCount: 309,
+        scannedAt: Date()
+    )
 
     public static let sampleSnapshot = MetricsSnapshot(
         collectedAt: "2026-09-29T00:00:00.000Z",

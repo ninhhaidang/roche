@@ -24,6 +24,8 @@ public struct DashboardView: View {
                     }
                     Spacer()
 
+                    AutoRefreshToggleControl(service: service, style: .headerCapsule)
+
                     if let snapshot = service.snapshot {
                         VStack(alignment: .trailing, spacing: 2) {
                             HStack(alignment: .firstTextBaseline, spacing: 4) {

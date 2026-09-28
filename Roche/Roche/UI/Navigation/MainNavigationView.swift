@@ -3,11 +3,12 @@ import SwiftUI
 public struct MainNavigationView: View {
     @State private var selectedItem: NavigationItem? = .dashboard
     @Bindable var service: TelemetryService
+    @State private var cleanerService: CleanerService
 
-    public init(service: TelemetryService) {
+    public init(service: TelemetryService, cleanerService: CleanerService? = nil) {
         self.service = service
+        _cleanerService = State(initialValue: cleanerService ?? CleanerService())
     }
-
     public var body: some View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 0) {
@@ -43,17 +44,23 @@ public struct MainNavigationView: View {
                 Spacer()
 
                 // Engine Status Footer
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(service.snapshot != nil ? Color.green : Color.orange)
-                        .frame(width: 8, height: 8)
-                    Text(service.snapshot != nil ? "Mole CLI: Sẵn sàng" : "Đang kết nối...")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Spacer()
+                VStack(spacing: 8) {
+                    // Engine Status
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(service.snapshot != nil ? Color.green : Color.orange)
+                            .frame(width: 8, height: 8)
+                        Text(service.snapshot != nil ? "Mole CLI: Sẵn sàng" : "Đang kết nối...")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+
+                    // Auto-refresh Row
+                    AutoRefreshToggleControl(service: service, style: .sidebarRow)
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.vertical, 10)
                 .background(Color.white.opacity(0.02))
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
@@ -65,9 +72,9 @@ public struct MainNavigationView: View {
                 case .monitor:
                     SystemMonitorView(service: service)
                 case .cleaner:
-                    CleanerView()
+                    CleanerView(service: cleanerService)
                 case .settings:
-                    SettingsView()
+                    SettingsView(telemetryService: service)
                 }
             }
         }

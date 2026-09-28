@@ -53,6 +53,7 @@
 				68DCF943306AD1B000CAAC19 /* Sources */,
 				68DCF944306AD1B000CAAC19 /* Frameworks */,
 				68DCF945306AD1B000CAAC19 /* Resources */,
+				68DCF999306AD1B000CAAC19 /* Embed Mole Vendor */,
 			);
 			buildRules = (
 			);
@@ -106,6 +107,33 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		68DCF999306AD1B000CAAC19 /* Embed Mole Vendor */ = {
+			isa = PBXShellScriptBuildPhase;
+			name = "Embed Mole Vendor";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/mole",
+			);
+			shellPath = /bin/sh;
+			shellScript = (
+				"set -e",
+				"DEST_DIR=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/mole\"",
+				"mkdir -p \"$DEST_DIR\"",
+				"SRC_DIR=\"${SRCROOT}/../vendor/mole\"",
+				"cp \"$SRC_DIR/mo\" \"$SRC_DIR/mole\" \"$DEST_DIR/\"",
+				"cp -R \"$SRC_DIR/bin\" \"$DEST_DIR/\"",
+				"cp -R \"$SRC_DIR/lib\" \"$DEST_DIR/\"",
+				"chmod -R +x \"$DEST_DIR/mo\" \"$DEST_DIR/mole\" \"$DEST_DIR/bin/\"*",
+				"if [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then",
+				"    /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"$DEST_DIR/bin/status-go\" \"$DEST_DIR/bin/analyze-go\" 2>/dev/null || /usr/bin/codesign --force --sign - \"$DEST_DIR/bin/status-go\" \"$DEST_DIR/bin/analyze-go\" 2>/dev/null || true",
+				"else",
+				"    /usr/bin/codesign --force --sign - \"$DEST_DIR/bin/status-go\" \"$DEST_DIR/bin/analyze-go\" 2>/dev/null || true",
+				"fi",
+				"",
+			);
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		68DCF943306AD1B000CAAC19 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -153,7 +181,7 @@
 				DEVELOPMENT_TEAM = VXBT889JYS;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -217,7 +245,7 @@
 				DEVELOPMENT_TEAM = VXBT889JYS;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
