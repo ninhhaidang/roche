@@ -1,0 +1,28 @@
+import SwiftUI
+
+public nonisolated enum NavigationItem: String, CaseIterable, Identifiable, Sendable {
+    case dashboard
+    case monitor
+    case cleaner
+    case settings
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .dashboard: return "Tổng quan"
+        case .monitor: return "Giám sát"
+        case .cleaner: return "Dọn dẹp"
+        case .settings: return "Cài đặt"
+        }
+    }
+
+    public var iconName: String {
+        switch self {
+        case .dashboard: return "gauge.with.needle"
+        case .monitor: return "cpu"
+        case .cleaner: return "bubbles.and.sparkles"
+        case .settings: return "gearshape"
+        }
+    }
+}
