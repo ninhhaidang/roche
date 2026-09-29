@@ -48,7 +48,7 @@ public struct CleanerView: View {
             }
             Button("Hủy", role: .cancel) {}
         } message: {
-            Text("Roche sẽ dọn dẹp các mục bộ nhớ đệm, tệp rác và thùng rác đã chọn thông qua Mole Engine. Thao tác này an toàn và giải phóng dung lượng đĩa ngay lập tức.")
+            Text("Bạn có chắc chắn muốn dọn dẹp các mục đã chọn: \(service.selectedCategoriesSummary) (tổng cộng \(service.formattedSelectedTotalSize))? Thao tác này sẽ xóa an toàn và giải phóng dung lượng đĩa.")
         }
     }
 
@@ -354,7 +354,7 @@ public struct CleanerView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
-                .disabled(service.selectedTotalBytes == 0 || service.isCleaning)
+                .disabled(!service.canCleanSelected)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 14)

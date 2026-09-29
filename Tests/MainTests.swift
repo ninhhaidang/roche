@@ -13,6 +13,9 @@ struct AllTestsRunner {
             print("\n--- Running CleanListParser Tests ---")
             runCleanListParserTests()
 
+            print("\n--- Running CleanEngine Selection Tests ---")
+            try await runCleanEngineSelectionTests()
+
             print("\n===============================")
             print("ALL SUITES PASSED SUCCESSFULLY!")
             print("===============================")

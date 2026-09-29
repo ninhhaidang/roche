@@ -54,11 +54,22 @@ public final class CleanEngine {
             .filter { selectedCategories.contains($0.kind) }
             .totalSizeBytes
     }
-
     public var formattedSelectedTotalSize: String {
         CleanModelsFormatter.formatBytes(selectedTotalBytes)
     }
 
+    public var canCleanSelected: Bool {
+        guard case .ready = state else { return false }
+        return !selectedCategories.isEmpty && !isCleaning
+    }
+
+    public var selectedCategoriesSummary: String {
+        guard let categories = scanResult?.categories else { return "" }
+        let selectedTitles = categories
+            .filter { selectedCategories.contains($0.kind) }
+            .map(\.name)
+        return selectedTitles.joined(separator: ", ")
+    }
     public func toggleCategory(_ category: CleanCategoryKind) {
         guard case .ready(let result, var selected) = state else { return }
         if selected.contains(category) {
@@ -71,8 +82,8 @@ public final class CleanEngine {
 
     public func selectAll() {
         guard case .ready(let result, _) = state else { return }
-        let allKinds = Set(result.categories.map(\.kind))
-        state = .ready(result: result, selectedCategories: allKinds)
+        let nonEmptyKinds = Set(result.categories.filter { $0.sizeBytes > 0 || $0.itemCount > 0 }.map(\.kind))
+        state = .ready(result: result, selectedCategories: nonEmptyKinds)
     }
 
     public func deselectAll() {
