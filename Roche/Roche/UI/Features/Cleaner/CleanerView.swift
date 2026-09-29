@@ -243,7 +243,7 @@ public struct CleanerView: View {
                                 Text("Dọn dẹp thành công! Đã giải phóng \(lastClean.formattedReclaimedSize)")
                                     .font(.system(size: 13, weight: .bold))
                                     .foregroundStyle(.white)
-                                Text(lastClean.message)
+                                Text(lastClean.summaryText)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

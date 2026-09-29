@@ -145,6 +145,17 @@ public nonisolated struct CleanExecutionResult: Sendable, Equatable {
         CleanModelsFormatter.formatBytes(reclaimedBytes)
     }
 
+    public var formattedCleanedAt: String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .medium
+        formatter.dateStyle = .none
+        return formatter.string(from: cleanedAt)
+    }
+
+    public var summaryText: String {
+        "Đã xóa \(itemsRemovedCount) mục lúc \(formattedCleanedAt) • \(message)"
+    }
+
     public init(
         reclaimedBytes: UInt64,
         cleanedCategories: [CleanCategoryKind],

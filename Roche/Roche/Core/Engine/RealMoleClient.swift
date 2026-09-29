@@ -4,6 +4,7 @@ public final nonisolated class RealMoleClient: MoleClientProtocol, Sendable {
     private let finder: MoleExecutableFinder
     private let runner: any SubprocessRunning
     private let parser: any CleanListParsing
+    private let trashManager: any TrashManaging
     private let timeoutSeconds: TimeInterval
     private let scanTimeoutSeconds: TimeInterval
 
@@ -11,12 +12,14 @@ public final nonisolated class RealMoleClient: MoleClientProtocol, Sendable {
         finder: MoleExecutableFinder = MoleExecutableFinder(),
         runner: any SubprocessRunning = SubprocessRunner(),
         parser: any CleanListParsing = CleanListParser(),
+        trashManager: any TrashManaging = SystemTrashManager(),
         timeoutSeconds: TimeInterval = 15.0,
         scanTimeoutSeconds: TimeInterval = 120.0
     ) {
         self.finder = finder
         self.runner = runner
         self.parser = parser
+        self.trashManager = trashManager
         self.timeoutSeconds = timeoutSeconds
         self.scanTimeoutSeconds = scanTimeoutSeconds
     }
@@ -68,13 +71,19 @@ public final nonisolated class RealMoleClient: MoleClientProtocol, Sendable {
 
         // 1. Clean Trash if selected
         if categories.contains(.trash) {
-            let trashBefore = await fetchTrashInfo()
-            emptyTrashViaFinder()
-            let trashAfter = await fetchTrashInfo()
-            let reclaimedTrash = trashBefore.sizeBytes > trashAfter.sizeBytes ? (trashBefore.sizeBytes - trashAfter.sizeBytes) : trashBefore.sizeBytes
-            reclaimedTotal += reclaimedTrash
-            itemsCleanedTotal += trashBefore.itemCount
-            statusNotes.append("Đã dọn Thùng rác")
+            let trashBefore = await trashManager.fetchTrashInfo()
+            let success = await trashManager.emptyTrash()
+            let trashAfter = await trashManager.fetchTrashInfo()
+
+            if success {
+                let reclaimedTrash = trashBefore.sizeBytes > trashAfter.sizeBytes ? (trashBefore.sizeBytes - trashAfter.sizeBytes) : (trashAfter.itemCount == 0 ? trashBefore.sizeBytes : 0)
+                let itemsCleaned = trashBefore.itemCount > trashAfter.itemCount ? (trashBefore.itemCount - trashAfter.itemCount) : (trashAfter.itemCount == 0 ? trashBefore.itemCount : 0)
+                reclaimedTotal += reclaimedTrash
+                itemsCleanedTotal += itemsCleaned
+                if itemsCleaned > 0 || reclaimedTrash > 0 {
+                    statusNotes.append("Đã dọn Thùng rác")
+                }
+            }
         }
 
         // 2. Clean Mole categories (Dev, App Caches, Logs) via Mole CLI
@@ -150,32 +159,7 @@ public final nonisolated class RealMoleClient: MoleClientProtocol, Sendable {
         return output.stdoutString
     }
     private func fetchTrashInfo() async -> (sizeBytes: UInt64, itemCount: Int) {
-        // First try reading trash metrics from snapshot
-        var size: UInt64 = 0
-        if let snapshot = try? await fetchMetrics() {
-            size = snapshot.trashSize ?? 0
-        }
-
-        // Query item count via AppleScript to avoid TCC permission dialogs
-        var count = 0
-        let script = "tell application \"Finder\" to count items of trash"
-        if let appleScript = NSAppleScript(source: script) {
-            var errorInfo: NSDictionary?
-            let output = appleScript.executeAndReturnError(&errorInfo)
-            if errorInfo == nil, let countInt = output.stringValue, let val = Int(countInt) {
-                count = val
-            }
-        }
-
-        return (sizeBytes: size, itemCount: count)
-    }
-
-    private func emptyTrashViaFinder() {
-        let script = "tell application \"Finder\" to empty trash"
-        if let appleScript = NSAppleScript(source: script) {
-            var errorInfo: NSDictionary?
-            appleScript.executeAndReturnError(&errorInfo)
-        }
+        await trashManager.fetchTrashInfo()
     }
 
     private func readCleanListContent() -> String {
