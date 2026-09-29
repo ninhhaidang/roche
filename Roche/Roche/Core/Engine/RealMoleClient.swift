@@ -2,16 +2,21 @@ import Foundation
 
 public final nonisolated class RealMoleClient: MoleClientProtocol, Sendable {
     private let finder: MoleExecutableFinder
+    private let runner: any SubprocessRunning
     private let timeoutSeconds: TimeInterval
+    private let scanTimeoutSeconds: TimeInterval
 
     public init(
         finder: MoleExecutableFinder = MoleExecutableFinder(),
-        timeoutSeconds: TimeInterval = 15.0
+        runner: any SubprocessRunning = SubprocessRunner(),
+        timeoutSeconds: TimeInterval = 15.0,
+        scanTimeoutSeconds: TimeInterval = 120.0
     ) {
         self.finder = finder
+        self.runner = runner
         self.timeoutSeconds = timeoutSeconds
+        self.scanTimeoutSeconds = scanTimeoutSeconds
     }
-
     public var engineInfo: MoleEngineInfo {
         finder.currentEngineInfo()
     }
@@ -28,7 +33,7 @@ public final nonisolated class RealMoleClient: MoleClientProtocol, Sendable {
         guard let target = finder.findCleanExecutable(dryRun: true) else {
             throw MoleError.executableNotFound
         }
-        _ = try await runProcess(target: target, timeout: 120.0)
+        _ = try await runProcess(target: target, timeout: scanTimeoutSeconds)
 
         // 2. Query Trash size and count
         let trashInfo = await fetchTrashInfo()
@@ -124,88 +129,48 @@ public final nonisolated class RealMoleClient: MoleClientProtocol, Sendable {
 
     // MARK: - Private Helpers
 
+    private func defaultEnvironment() -> [String: String] {
+        var environment = Foundation.ProcessInfo.processInfo.environment
+        environment["LC_ALL"] = "en_US.UTF-8"
+        environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (environment["PATH"] ?? "")
+        return environment
+    }
+
     private func runCommand(target: ExecutableTarget) async throws -> MetricsSnapshot {
-        try await withThrowingTaskGroup(of: MetricsSnapshot.self) { group in
-            group.addTask {
-                let outputData = try await self.executeProcess(target: target)
-                do {
-                    let decoder = JSONDecoder()
-                    return try decoder.decode(MetricsSnapshot.self, from: outputData)
-                } catch {
-                    let jsonPreview = String(data: outputData.prefix(200), encoding: .utf8) ?? ""
-                    throw MoleError.decodingFailed("\(error.localizedDescription) | Raw: \(jsonPreview)")
-                }
-            }
+        let output = try await runner.execute(
+            executableURL: target.url,
+            arguments: target.arguments,
+            environment: defaultEnvironment(),
+            timeout: timeoutSeconds
+        )
 
-            // Timeout watchdog
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(self.timeoutSeconds * 1_000_000_000))
-                throw MoleError.timeout
-            }
+        guard output.exitCode == 0 else {
+            throw MoleError.processExecutionFailed(exitCode: output.exitCode, stderr: output.stderrString)
+        }
 
-            guard let result = try await group.next() else {
-                throw MoleError.timeout
-            }
-            group.cancelAll()
-            return result
+        do {
+            let decoder = JSONDecoder()
+            return try decoder.decode(MetricsSnapshot.self, from: output.stdoutData)
+        } catch {
+            let jsonPreview = String(data: output.stdoutData.prefix(200), encoding: .utf8) ?? ""
+            throw MoleError.decodingFailed("\(error.localizedDescription) | Raw: \(jsonPreview)")
         }
     }
 
     private func runProcess(target: ExecutableTarget, timeout: TimeInterval) async throws -> String {
-        try await withThrowingTaskGroup(of: String.self) { group in
-            group.addTask {
-                let data = try await self.executeProcess(target: target)
-                return String(data: data, encoding: .utf8) ?? ""
-            }
+        let output = try await runner.execute(
+            executableURL: target.url,
+            arguments: target.arguments,
+            environment: defaultEnvironment(),
+            timeout: timeout
+        )
 
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                throw MoleError.timeout
-            }
-
-            guard let result = try await group.next() else {
-                throw MoleError.timeout
-            }
-            group.cancelAll()
-            return result
+        guard output.exitCode == 0 else {
+            throw MoleError.processExecutionFailed(exitCode: output.exitCode, stderr: output.stderrString)
         }
+
+        return output.stdoutString
     }
-
-    private func executeProcess(target: ExecutableTarget) async throws -> Data {
-        let process = Process()
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-
-        process.executableURL = target.url
-        process.arguments = target.arguments
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        // Add standard environment variables
-        var environment = Foundation.ProcessInfo.processInfo.environment
-        environment["LC_ALL"] = "en_US.UTF-8"
-        environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (environment["PATH"] ?? "")
-        process.environment = environment
-
-        do {
-            try process.run()
-        } catch {
-            throw MoleError.processExecutionFailed(exitCode: -1, stderr: error.localizedDescription)
-        }
-
-        let outputData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let errorData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-
-        process.waitUntilExit()
-
-        if process.terminationStatus != 0 {
-            let stderr = String(data: errorData, encoding: .utf8) ?? "Unknown process error"
-            throw MoleError.processExecutionFailed(exitCode: process.terminationStatus, stderr: stderr)
-        }
-
-        return outputData
-    }
-
     private func fetchTrashInfo() async -> (sizeBytes: UInt64, itemCount: Int) {
         // First try reading trash metrics from snapshot
         var size: UInt64 = 0

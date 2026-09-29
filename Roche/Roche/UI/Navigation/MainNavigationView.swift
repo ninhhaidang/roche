@@ -3,11 +3,11 @@ import SwiftUI
 public struct MainNavigationView: View {
     @State private var selectedItem: NavigationItem? = .dashboard
     @Bindable var service: TelemetryService
-    @State private var cleanerService: CleanerService
+    @State private var cleanEngine: CleanEngine
 
-    public init(service: TelemetryService, cleanerService: CleanerService? = nil) {
+    public init(service: TelemetryService, cleanerService: CleanEngine? = nil) {
         self.service = service
-        _cleanerService = State(initialValue: cleanerService ?? CleanerService())
+        _cleanEngine = State(initialValue: cleanerService ?? CleanEngine())
     }
     public var body: some View {
         NavigationSplitView {
@@ -72,7 +72,7 @@ public struct MainNavigationView: View {
                 case .monitor:
                     SystemMonitorView(service: service)
                 case .cleaner:
-                    CleanerView(service: cleanerService)
+                    CleanerView(service: cleanEngine)
                 case .settings:
                     SettingsView(telemetryService: service)
                 }

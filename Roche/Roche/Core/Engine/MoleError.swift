@@ -1,6 +1,6 @@
 import Foundation
 
-public nonisolated enum MoleError: LocalizedError, Sendable {
+public nonisolated enum MoleError: LocalizedError, Sendable, Equatable {
     case executableNotFound
     case processExecutionFailed(exitCode: Int32, stderr: String)
     case decodingFailed(String)

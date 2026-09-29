@@ -1,12 +1,12 @@
 import SwiftUI
 
 public struct CleanerView: View {
-    @Bindable var service: CleanerService
+    @Bindable var service: CleanEngine
     @State private var showingConfirmation = false
     @State private var expandedCategory: CleanCategoryKind?
 
-    public init(service: CleanerService? = nil) {
-        self.service = service ?? CleanerService()
+    public init(service: CleanEngine? = nil) {
+        self.service = service ?? CleanEngine()
     }
 
     public var body: some View {
@@ -29,6 +29,8 @@ public struct CleanerView: View {
                     cleaningLoadingView
                 } else if let result = service.scanResult {
                     scanResultsView(result)
+                } else if case .failed(let message) = service.state {
+                    failureView(message)
                 } else {
                     initialWelcomeView
                 }
@@ -168,6 +170,64 @@ public struct CleanerView: View {
             Spacer()
         }
     }
+    private func failureView(_ message: String) -> some View {
+        VStack(spacing: 20) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(Color.red.opacity(0.12))
+                    .frame(width: 80, height: 80)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 38))
+                    .foregroundStyle(.red)
+            }
+
+            VStack(spacing: 8) {
+                Text("Quét Rác Thất Bại")
+                    .font(.title3.bold())
+                    .foregroundStyle(.white)
+
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 480)
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    service.reset()
+                } label: {
+                    Text("Đóng")
+                        .font(.subheadline)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    Task {
+                        await service.scan()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Thử Lại")
+                    }
+                    .font(.subheadline.bold())
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+            }
+
+            Spacer()
+        }
+        .padding(32)
+    }
+
 
     private func scanResultsView(_ result: CleanScanResult) -> some View {
         VStack(spacing: 0) {
