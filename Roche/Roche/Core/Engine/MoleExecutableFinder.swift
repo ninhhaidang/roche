@@ -85,7 +85,9 @@ public nonisolated struct MoleExecutableFinder: Sendable {
             }
 
             let bundledMo = resourceURL.appendingPathComponent("mole/mo")
-            if fileManager.isExecutableFile(atPath: bundledMo.path) {
+            let companionStatusGo = resourceURL.appendingPathComponent("mole/bin/status-go")
+            if fileManager.isExecutableFile(atPath: bundledMo.path),
+               fileManager.isExecutableFile(atPath: companionStatusGo.path) {
                 return ExecutableTarget(url: bundledMo, arguments: ["status", "--json"])
             }
         }
@@ -97,7 +99,9 @@ public nonisolated struct MoleExecutableFinder: Sendable {
         }
 
         if let bundleMo = Bundle.main.url(forResource: "mo", withExtension: nil),
-           fileManager.isExecutableFile(atPath: bundleMo.path) {
+           fileManager.isExecutableFile(atPath: bundleMo.path),
+           let bundleStatusGo = Bundle.main.url(forResource: "status-go", withExtension: nil),
+           fileManager.isExecutableFile(atPath: bundleStatusGo.path) {
             return ExecutableTarget(url: bundleMo, arguments: ["status", "--json"])
         }
 
@@ -130,8 +134,8 @@ public nonisolated struct MoleExecutableFinder: Sendable {
         // 5. Local vendor/mole fallback (Development / Sandbox)
         let devVendorCandidates = [
             "vendor/mole/bin/status-go",
-            "vendor/mole/mo",
             "../vendor/mole/bin/status-go",
+            "vendor/mole/mo",
             "../vendor/mole/mo"
         ]
         for candidate in devVendorCandidates {
@@ -141,7 +145,11 @@ public nonisolated struct MoleExecutableFinder: Sendable {
                 if candidate.contains("status-go") {
                     return ExecutableTarget(url: url, arguments: ["--json"])
                 } else {
-                    return ExecutableTarget(url: url, arguments: ["status", "--json"])
+                    let companion = candidate.replacingOccurrences(of: "mo", with: "bin/status-go")
+                    let resolvedCompanion = URL(fileURLWithPath: companion).standardized.path
+                    if fileManager.isExecutableFile(atPath: resolvedCompanion) {
+                        return ExecutableTarget(url: url, arguments: ["status", "--json"])
+                    }
                 }
             }
         }

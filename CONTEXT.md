@@ -45,3 +45,21 @@ _Avoid_: Purge run, Delete task, Wipe
 **Clean Category**:
 A distinct bucket of reclaimable items such as developer artifacts, application caches, or system logs.
 _Avoid_: Clean type, Target, Group
+
+### UI & Design System
+
+**Liquid Bento**:
+The hybrid design language combining asymmetrical Bento grid hierarchy with macOS Liquid Glassmorphism (`.ultraThinMaterial`, specular borders, and dynamic reactive glows).
+_Avoid_: Dashboard UI, Dark mode theme, Grid layout
+
+**Bento Tile**:
+A modular, self-contained glass card dedicated to presenting a specific hardware subsystem or health metric.
+_Avoid_: Dashboard widget, Metric card, Panel
+
+**Specular Border**:
+A subtle directional gradient stroke (`LinearGradient` top-left to bottom-right) simulating light reflection on beveled glass edges.
+_Avoid_: Card border, Outline, Stroke
+
+**Adaptive Glow**:
+A hardware-state-driven radial luminescence shifting hue from emerald/cyan (nominal) through amber (elevated) to crimson (saturated or thermal limit).
+_Avoid_: Dynamic lighting, Status color, Glow effect

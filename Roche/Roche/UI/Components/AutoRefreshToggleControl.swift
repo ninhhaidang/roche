@@ -44,12 +44,13 @@ public struct AutoRefreshToggleControl: View {
             .buttonStyle(.plain)
 
             if service.isAutoRefreshEnabled {
-                Picker("Tần số làm mới", selection: $service.interval) {
+                Picker("", selection: $service.interval) {
                     ForEach(AutoRefreshInterval.allCases) { item in
                         Text(item.label).tag(item)
                     }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .frame(width: 84)
                 .controlSize(.small)
             }

@@ -21,6 +21,8 @@ struct AllTestsRunner {
 
             print("\n--- Running CleanEngine Execution Tests ---")
             try await runCleanEngineExecutionTests()
+            print("\n--- Running MoleExecutableFinder Tests ---")
+            try await runMoleExecutableFinderTests()
 
             print("\n===============================")
             print("ALL SUITES PASSED SUCCESSFULLY!")

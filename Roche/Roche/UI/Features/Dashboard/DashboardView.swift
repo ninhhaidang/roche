@@ -6,7 +6,6 @@ public struct DashboardView: View {
     public init(service: TelemetryService) {
         self.service = service
     }
-
     public var body: some View {
         ZStack {
             Color.black.opacity(0.95).ignoresSafeArea()
@@ -23,31 +22,23 @@ public struct DashboardView: View {
                             .foregroundStyle(.white)
                     }
                     Spacer()
-
-                    AutoRefreshToggleControl(service: service, style: .headerCapsule)
-
-                    if let snapshot = service.snapshot {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                Text("\(snapshot.healthScore)")
-                                    .font(.system(size: 32, weight: .black, design: .rounded))
-                                    .foregroundStyle(scoreColor(snapshot.healthScore))
-                                Text("/100")
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
+                    HStack(spacing: 10) {
+                        Button {
+                            Task {
+                                await service.refresh()
                             }
-                            Text(snapshot.healthScoreMsg.uppercased())
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(scoreColor(snapshot.healthScore))
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(service.isLoading ? .orange : .white.opacity(0.7))
+                                .padding(7)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Circle())
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(scoreColor(snapshot.healthScore).opacity(0.3), lineWidth: 1)
-                        )
+                        .buttonStyle(.plain)
+                        .disabled(service.isLoading)
+
+                        AutoRefreshToggleControl(service: service, style: .headerCapsule)
                     }
                 }
 
@@ -55,69 +46,7 @@ public struct DashboardView: View {
 
                 // Telemetry Metrics Grid
                 if let snapshot = service.snapshot {
-                    ScrollView {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-                            MetricCard(
-                                title: "CPU USAGE",
-                                value: String(format: "%.1f%%", snapshot.cpu.usage),
-                                subtitle: "\(snapshot.hardware.cpuModel) (\(snapshot.cpu.logicalCpu) Cores)",
-                                accentColor: .orange
-                            )
-
-                            MetricCard(
-                                title: "MEMORY",
-                                value: snapshot.hardware.totalRam,
-                                subtitle: "Áp lực: \(snapshot.memory.pressure.uppercased()) (\(String(format: "%.0f%%", snapshot.memory.usedPercent)))",
-                                accentColor: .purple
-                            )
-
-                            if let thermal = snapshot.thermal, let cpuTemp = thermal.cpuTemp {
-                                MetricCard(
-                                    title: "THERMALS",
-                                    value: String(format: "%.1f°C", cpuTemp),
-                                    subtitle: thermal.fanSpeed != nil ? "Quạt: \(thermal.fanSpeed!) RPM" : "Công suất: \(String(format: "%.1fW", thermal.systemPower ?? 0))",
-                                    accentColor: .red
-                                )
-                            } else {
-                                MetricCard(
-                                    title: "THERMALS",
-                                    value: "Bình thường",
-                                    subtitle: "Cảm biến ổn định",
-                                    accentColor: .red
-                                )
-                            }
-
-                            if let battery = snapshot.batteries?.first {
-                                MetricCard(
-                                    title: "BATTERY",
-                                    value: String(format: "%.0f%%", battery.percent),
-                                    subtitle: "\(battery.status) • \(battery.cycleCount ?? 0) chu kỳ",
-                                    accentColor: .yellow
-                                )
-                            } else {
-                                MetricCard(
-                                    title: "POWER",
-                                    value: "AC Power",
-                                    subtitle: "Nguồn điện trực tiếp",
-                                    accentColor: .yellow
-                                )
-                            }
-
-                            MetricCard(
-                                title: "STORAGE",
-                                value: snapshot.hardware.diskSize,
-                                subtitle: snapshot.trashSize != nil ? "Rác: \(formatBytes(snapshot.trashSize!))" : "Primary Drive",
-                                accentColor: .green
-                            )
-
-                            MetricCard(
-                                title: "UPTIME",
-                                value: snapshot.uptime,
-                                subtitle: "Host: \(snapshot.host)",
-                                accentColor: .blue
-                            )
-                        }
-                    }
+                    LiquidBentoDashboardView(snapshot: snapshot)
                 } else if service.isLoading {
                     Spacer()
                     ProgressView("Đang quét qua Mole engine...")
@@ -133,25 +62,25 @@ public struct DashboardView: View {
                     }
                     Spacer()
                 }
-
-                Spacer()
-
-                // Action Button
-                Button {
-                    Task {
-                        await service.refresh()
+                if service.snapshot == nil {
+                    Spacer()
+                    // Action Button (only in error or initial empty state)
+                    Button {
+                        Task {
+                            await service.refresh()
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: "arrow.clockwise")
+                            Text(service.isLoading ? "Đang quét..." : "Làm mới dữ liệu")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
                     }
-                } label: {
-                    HStack {
-                        Image(systemName: "arrow.clockwise")
-                        Text(service.isLoading ? "Đang quét..." : "Làm mới dữ liệu")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .disabled(service.isLoading)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
-                .disabled(service.isLoading)
             }
             .padding(24)
         }
