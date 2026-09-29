@@ -3,17 +3,20 @@ import Foundation
 public final nonisolated class RealMoleClient: MoleClientProtocol, Sendable {
     private let finder: MoleExecutableFinder
     private let runner: any SubprocessRunning
+    private let parser: any CleanListParsing
     private let timeoutSeconds: TimeInterval
     private let scanTimeoutSeconds: TimeInterval
 
     public init(
         finder: MoleExecutableFinder = MoleExecutableFinder(),
         runner: any SubprocessRunning = SubprocessRunner(),
+        parser: any CleanListParsing = CleanListParser(),
         timeoutSeconds: TimeInterval = 15.0,
         scanTimeoutSeconds: TimeInterval = 120.0
     ) {
         self.finder = finder
         self.runner = runner
+        self.parser = parser
         self.timeoutSeconds = timeoutSeconds
         self.scanTimeoutSeconds = scanTimeoutSeconds
     }
@@ -38,47 +41,23 @@ public final nonisolated class RealMoleClient: MoleClientProtocol, Sendable {
         // 2. Query Trash size and count
         let trashInfo = await fetchTrashInfo()
 
-        // 3. Read and parse ~/.config/mole/clean-list.txt
-        let cleanListPath = ("~/.config/mole/clean-list.txt" as NSString).expandingTildeInPath
-        let itemsByCat = parseCleanList(atPath: cleanListPath)
-
-        // 4. Construct CleanCategories using collection extensions
-        let devItems = itemsByCat[.dev] ?? []
-        let appCacheItems = itemsByCat[.appCaches] ?? []
-        let logItems = itemsByCat[.logs] ?? []
-
-        let categories: [CleanCategory] = [
-            CleanCategory(
-                kind: .dev,
-                items: devItems,
-                isSelected: devItems.totalSizeBytes > 0
-            ),
-            CleanCategory(
-                kind: .appCaches,
-                items: appCacheItems,
-                isSelected: appCacheItems.totalSizeBytes > 0
-            ),
-            CleanCategory(
-                kind: .logs,
-                items: logItems,
-                isSelected: logItems.totalSizeBytes > 0
-            ),
-            CleanCategory(
-                kind: .trash,
-                sizeBytes: trashInfo.sizeBytes,
-                itemCount: trashInfo.itemCount,
-                items: trashInfo.itemCount > 0 ? [
-                    CleanItem(
-                        path: ("~/.Trash" as NSString).expandingTildeInPath,
-                        name: "Thùng rác macOS (~/.Trash)",
-                        sizeBytes: trashInfo.sizeBytes,
-                        details: "\(trashInfo.itemCount) mục đang chờ dọn"
-                    )
-                ] : [],
-                isSelected: trashInfo.sizeBytes > 0 || trashInfo.itemCount > 0
-            )
-        ]
-
+        // 3. Read and construct CleanCategories via CleanListParser
+        let content = readCleanListContent()
+        let trashCategory = CleanCategory(
+            kind: .trash,
+            sizeBytes: trashInfo.sizeBytes,
+            itemCount: trashInfo.itemCount,
+            items: trashInfo.itemCount > 0 ? [
+                CleanItem(
+                    path: ("~/.Trash" as NSString).expandingTildeInPath,
+                    name: "Thùng rác macOS (~/.Trash)",
+                    sizeBytes: trashInfo.sizeBytes,
+                    details: "\(trashInfo.itemCount) mục đang chờ dọn"
+                )
+            ] : [],
+            isSelected: trashInfo.sizeBytes > 0 || trashInfo.itemCount > 0
+        )
+        let categories = parser.parseCategories(content: content, trashCategory: trashCategory)
         return CleanScanResult(categories: categories, scannedAt: Date())
     }
 
@@ -108,8 +87,7 @@ public final nonisolated class RealMoleClient: MoleClientProtocol, Sendable {
             }
 
             // Tally estimated reclaimable bytes and items from the clean scan
-            let cleanListPath = ("~/.config/mole/clean-list.txt" as NSString).expandingTildeInPath
-            let itemsByCat = parseCleanList(atPath: cleanListPath)
+            let itemsByCat = loadCleanListItems()
             let selectedMoleItems = selectedMoleCategories.flatMap { itemsByCat[$0] ?? [] }
 
             _ = try await runProcess(target: target, timeout: 180.0)
@@ -200,101 +178,13 @@ public final nonisolated class RealMoleClient: MoleClientProtocol, Sendable {
         }
     }
 
-    private func parseCleanList(atPath path: String) -> [CleanCategoryKind: [CleanItem]] {
-        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
-            return [:]
-        }
-
-        var results: [CleanCategoryKind: [CleanItem]] = [
-            .dev: [],
-            .appCaches: [],
-            .logs: []
-        ]
-
-        var currentSection = ""
-
-        for line in content.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
-            if trimmed.hasPrefix("=== ") && trimmed.hasSuffix(" ===") {
-                currentSection = trimmed
-                continue
-            }
-            if trimmed.contains(", counted under ") {
-                continue
-            }
-            let parts = trimmed.components(separatedBy: " # ")
-            guard parts.count == 2 else { continue }
-            let itemPath = parts[0].trimmingCharacters(in: .whitespaces)
-            let sizePart = parts[1].trimmingCharacters(in: .whitespaces)
-            let bytes = parseByteString(sizePart)
-
-            let isLog = itemPath.contains("/Logs/") ||
-                        itemPath.contains("/logs/") ||
-                        itemPath.hasSuffix(".log") ||
-                        itemPath.hasSuffix(".log.gz") ||
-                        itemPath.hasSuffix(".dmp") ||
-                        itemPath.contains("CrashReporter") ||
-                        itemPath.contains("DiagnosticReports")
-
-            let isDev = currentSection.contains("Developer tools") ||
-                        itemPath.contains("DerivedData") ||
-                        itemPath.contains(".npm") ||
-                        itemPath.contains(".cargo") ||
-                        itemPath.contains("clang") ||
-                        itemPath.contains("Xcode") ||
-                        itemPath.contains("VS Code") ||
-                        itemPath.contains("Code/CachedData") ||
-                        itemPath.contains(".vscode") ||
-                        itemPath.contains("claude/versions") ||
-                        itemPath.contains("opencode") ||
-                        itemPath.contains("codex") ||
-                        itemPath.contains("swiftpm") ||
-                        itemPath.contains("__pycache__") ||
-                        itemPath.contains("turbopack") ||
-                        itemPath.contains("Homebrew/downloads")
-
-            let item = CleanItem(
-                path: itemPath,
-                name: URL(fileURLWithPath: itemPath).lastPathComponent,
-                sizeBytes: bytes,
-                details: currentSection.replacingOccurrences(of: "===", with: "").trimmingCharacters(in: .whitespaces)
-            )
-
-            if isLog {
-                results[.logs]?.append(item)
-            } else if isDev {
-                results[.dev]?.append(item)
-            } else {
-                results[.appCaches]?.append(item)
-            }
-        }
-
-        return results
+    private func readCleanListContent() -> String {
+        let cleanListPath = ("~/.config/mole/clean-list.txt" as NSString).expandingTildeInPath
+        return (try? String(contentsOfFile: cleanListPath, encoding: .utf8)) ?? ""
     }
 
-    private func parseByteString(_ str: String) -> UInt64 {
-        let clean = str.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        var numStr = ""
-        var unitStr = ""
-        for ch in clean {
-            if ch.isNumber || ch == "." {
-                numStr.append(ch)
-            } else if ch.isLetter {
-                unitStr.append(ch)
-            }
-        }
-        guard let value = Double(numStr) else { return 0 }
-        if unitStr.contains("TB") {
-            return UInt64(value * 1024 * 1024 * 1024 * 1024)
-        } else if unitStr.contains("GB") {
-            return UInt64(value * 1024 * 1024 * 1024)
-        } else if unitStr.contains("MB") {
-            return UInt64(value * 1024 * 1024)
-        } else if unitStr.contains("KB") {
-            return UInt64(value * 1024)
-        } else {
-            return UInt64(value)
-        }
+    private func loadCleanListItems() -> [CleanCategoryKind: [CleanItem]] {
+        parser.parse(content: readCleanListContent())
     }
+
 }
