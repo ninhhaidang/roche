@@ -11,9 +11,13 @@ public struct AppUninstallerView: View {
     @State private var searchFilter: String = ""
     @State private var isLoadingApps: Bool = false
     @State private var isInspectingApp: Bool = false
+    @State private var isUninstalling: Bool = false
     @State private var errorMessage: String?
     @State private var showTrashConfirm: Bool = false
+    @State private var showPermanentConfirm: Bool = false
     @State private var showSuccessToast: Bool = false
+    @State private var lastResult: UninstallResult?
+    @State private var toastMessage: String = ""
 
     public init(engine: any UninstallEngineProtocol = RealUninstallEngine()) {
         self.engine = engine
@@ -45,6 +49,34 @@ public struct AppUninstallerView: View {
                 .padding(20)
             }
 
+            // Loading Overlay during Uninstallation
+            if isUninstalling {
+                ZStack {
+                    Color.black.opacity(0.7)
+                        .ignoresSafeArea()
+
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .controlSize(.large)
+                            .tint(.red)
+                        Text("Đang thực thi gỡ bỏ ứng dụng...")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                        if let selected = selectedApp {
+                            Text(selected.name)
+                                .font(.system(size: 13))
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
+                    }
+                    .padding(32)
+                    .background(Color(red: 0.1, green: 0.1, blue: 0.12).opacity(0.95))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .specularBorder(cornerRadius: 16)
+                    .shadow(color: Color.black.opacity(0.5), radius: 20)
+                }
+                .transition(.opacity)
+            }
+
             // Success Toast Notification
             if showSuccessToast {
                 VStack {
@@ -52,7 +84,7 @@ public struct AppUninstallerView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(Color(red: 0.2, green: 0.85, blue: 0.55))
-                        Text("Đã chuyển các tệp vào Thùng Rác thành công.")
+                        Text(toastMessage)
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(.white)
                     }
@@ -75,22 +107,53 @@ public struct AppUninstallerView: View {
             isPresented: $showTrashConfirm,
             titleVisibility: .visible
         ) {
-            Button("Chuyển vào Thùng Rác", role: .destructive) {
-                withAnimation {
-                    showSuccessToast = true
-                }
-                Task {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    withAnimation {
-                        showSuccessToast = false
+            Button("Chuyển vào Thùng Rác (An toàn)", role: .destructive) {
+                if let selected = selectedApp {
+                    Task {
+                        await executeUninstall(app: selected, permanent: false)
                     }
                 }
+            }
+            Button("Xóa vĩnh viễn...", role: .destructive) {
+                showPermanentConfirm = true
             }
             Button("Hủy", role: .cancel) {}
         } message: {
             if let selected = selectedApp {
                 let sizeStr = preview?.selectedSizeText ?? selected.size
                 Text("Bạn có chắc chắn muốn gỡ bỏ \(selected.name) (\(sizeStr)) và chuyển \(preview?.selectedItemCount ?? 0) tệp đã chọn vào Thùng Rác?")
+            }
+        }
+        .alert(
+            "Cảnh báo: Xóa vĩnh viễn",
+            isPresented: $showPermanentConfirm
+        ) {
+            Button("Xóa vĩnh viễn ngay", role: .destructive) {
+                if let selected = selectedApp {
+                    Task {
+                        await executeUninstall(app: selected, permanent: true)
+                    }
+                }
+            }
+            Button("Hủy", role: .cancel) {}
+        } message: {
+            if let selected = selectedApp {
+                Text("Hành động này sẽ xóa vĩnh viễn \(selected.name) mà KHÔNG chuyển vào Thùng Rác. Dữ liệu sẽ không thể khôi phục. Bạn có chắc chắn muốn tiếp tục?")
+            }
+        }
+        .alert(
+            "Lỗi gỡ bỏ ứng dụng",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
+            Button("Đóng", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            if let error = errorMessage {
+                Text(error)
             }
         }
     }
@@ -474,8 +537,18 @@ public struct AppUninstallerView: View {
 
             Spacer()
 
-            Button {
-                showTrashConfirm = true
+            Menu {
+                Button {
+                    showTrashConfirm = true
+                } label: {
+                    Label("Gỡ bỏ vào Thùng Rác (Khuyên dùng)", systemImage: "trash")
+                }
+
+                Button(role: .destructive) {
+                    showPermanentConfirm = true
+                } label: {
+                    Label("Xóa vĩnh viễn (Bỏ qua Thùng Rác)", systemImage: "trash.slash")
+                }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "trash.fill")
@@ -494,10 +567,12 @@ public struct AppUninstallerView: View {
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .specularBorder(cornerRadius: 12)
+            } primaryAction: {
+                showTrashConfirm = true
             }
-            .buttonStyle(.plain)
-            .disabled(preview.selectedItemCount == 0)
-            .opacity(preview.selectedItemCount == 0 ? 0.5 : 1.0)
+            .menuStyle(.borderlessButton)
+            .disabled(preview.selectedItemCount == 0 || isUninstalling)
+            .opacity((preview.selectedItemCount == 0 || isUninstalling) ? 0.5 : 1.0)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -571,6 +646,38 @@ public struct AppUninstallerView: View {
         } catch {
             self.errorMessage = error.localizedDescription
             self.isInspectingApp = false
+        }
+    }
+
+    private func executeUninstall(app: InstalledApp, permanent: Bool) async {
+        isUninstalling = true
+        errorMessage = nil
+        do {
+            let result = try await engine.performUninstall(app: app, permanent: permanent)
+            self.lastResult = result
+            self.isUninstalling = false
+
+            let destText = permanent ? "vĩnh viễn" : "vào Thùng Rác"
+            self.toastMessage = "Đã gỡ bỏ \(result.appName) (\(result.reclaimedFormatted)) \(destText) thành công."
+
+            withAnimation {
+                self.showSuccessToast = true
+            }
+
+            // Deselect the uninstalled app and reload
+            self.selectedAppId = nil
+            self.preview = nil
+            await loadInstalledApps()
+
+            Task {
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                withAnimation {
+                    self.showSuccessToast = false
+                }
+            }
+        } catch {
+            self.isUninstalling = false
+            self.errorMessage = "Không thể gỡ bỏ \(app.name): \(error.localizedDescription)"
         }
     }
 }

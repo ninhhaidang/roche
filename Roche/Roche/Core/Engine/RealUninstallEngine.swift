@@ -56,6 +56,71 @@ public final nonisolated class RealUninstallEngine: UninstallEngineProtocol, Sen
         return Self.parseDryRunOutput(output.stdoutString, for: app)
     }
 
+    public func performUninstall(app: InstalledApp, permanent: Bool = false) async throws -> UninstallResult {
+        let appTargetName = app.uninstallName.isEmpty ? app.name : app.uninstallName
+        var args: [String] = []
+        if permanent {
+            args.append("--permanent")
+        }
+        args.append(appTargetName)
+
+        guard let target = finder.findUninstallExecutable(arguments: args) else {
+            throw MoleError.executableNotFound
+        }
+
+        // Send "y\n\n\n" to confirm initial prompt and any subsequent confirmations
+        let stdinInput = "y\n\n\n".data(using: .utf8)
+
+        let output = try await runner.execute(
+            executableURL: target.url,
+            arguments: target.arguments,
+            environment: nil,
+            timeout: timeoutSeconds,
+            stdinData: stdinInput
+        )
+
+        guard output.exitCode == 0 else {
+            let errorMsg = output.stderrString.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw MoleError.processExecutionFailed(
+                exitCode: output.exitCode,
+                stderr: errorMsg.isEmpty ? output.stdoutString : errorMsg
+            )
+        }
+
+        return Self.parseUninstallResult(
+            output: output.stdoutString,
+            app: app,
+            isPermanent: permanent
+        )
+    }
+
+    public static func parseUninstallResult(output: String, app: InstalledApp, isPermanent: Bool) -> UninstallResult {
+        let cleaned = stripAnsiCodes(output)
+        var parsedBytes: UInt64?
+
+        // Pattern matching: "freed <size>" or "would free <size>"
+        if let match = cleaned.range(of: #"(?:freed|would free)\s+([0-9.]+\s*[KMGT]?B)"#, options: .regularExpression) {
+            let matchedText = String(cleaned[match])
+            if let sizeMatch = matchedText.range(of: #"[0-9.]+\s*[KMGT]?B"#, options: .regularExpression) {
+                let sizeStr = String(matchedText[sizeMatch])
+                let bytes = CleanListParser.parseByteString(sizeStr)
+                if bytes > 0 {
+                    parsedBytes = bytes
+                }
+            }
+        }
+
+        let reclaimed = parsedBytes ?? app.sizeBytes
+        return UninstallResult(
+            appName: app.name,
+            reclaimedBytes: reclaimed,
+            reclaimedFormatted: CleanModelsFormatter.formatBytes(reclaimed),
+            isPermanent: isPermanent,
+            success: true,
+            errorMessage: nil
+        )
+    }
+
     // MARK: - Parsing Helpers
 
     public static func parseInstalledApps(from data: Data) throws -> [InstalledApp] {

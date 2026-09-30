@@ -216,3 +216,31 @@ public nonisolated struct AppUninstallPreview: Identifiable, Sendable, Equatable
         try container.encode(totalSizeText, forKey: .totalSizeText)
     }
 }
+
+// MARK: - Uninstall Execution Result
+
+public nonisolated struct UninstallResult: Identifiable, Sendable, Equatable, Codable {
+    public var id: String { "\(appName)-\(isPermanent)-\(success)" }
+    public let appName: String
+    public let reclaimedBytes: UInt64
+    public let reclaimedFormatted: String
+    public let isPermanent: Bool
+    public let success: Bool
+    public let errorMessage: String?
+
+    public init(
+        appName: String,
+        reclaimedBytes: UInt64,
+        reclaimedFormatted: String? = nil,
+        isPermanent: Bool = false,
+        success: Bool = true,
+        errorMessage: String? = nil
+    ) {
+        self.appName = appName
+        self.reclaimedBytes = reclaimedBytes
+        self.reclaimedFormatted = reclaimedFormatted ?? CleanModelsFormatter.formatBytes(reclaimedBytes)
+        self.isPermanent = isPermanent
+        self.success = success
+        self.errorMessage = errorMessage
+    }
+}

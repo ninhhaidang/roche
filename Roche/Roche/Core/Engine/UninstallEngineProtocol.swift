@@ -9,4 +9,7 @@ public protocol UninstallEngineProtocol: Sendable {
 
     /// Inspects an installed application and itemizes all associated residual files.
     func inspectApp(app: InstalledApp) async throws -> AppUninstallPreview
+
+    /// Performs the uninstallation of an application, routing to macOS Trash or permanent deletion.
+    func performUninstall(app: InstalledApp, permanent: Bool) async throws -> UninstallResult
 }
