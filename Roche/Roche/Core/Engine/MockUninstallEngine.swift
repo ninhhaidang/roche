@@ -68,6 +68,30 @@ public final nonisolated class MockUninstallEngine: UninstallEngineProtocol, @un
         )
     }
 
+    public func performUninstall(app: InstalledApp, permanent: Bool = false) async throws -> UninstallResult {
+        if simulatedDelay > 0 {
+            try await Task.sleep(nanoseconds: UInt64(simulatedDelay * 1_000_000_000))
+        }
+        if let error = simulatedError {
+            throw error
+        }
+
+        // Remove from mockApps if present
+        mockApps.removeAll { $0.id == app.id }
+        mockPreviews.removeValue(forKey: app.id)
+        mockPreviews.removeValue(forKey: app.name)
+
+        let reclaimed = app.sizeBytes > 0 ? app.sizeBytes : 50_000_000
+        return UninstallResult(
+            appName: app.name,
+            reclaimedBytes: reclaimed,
+            reclaimedFormatted: CleanModelsFormatter.formatBytes(reclaimed),
+            isPermanent: permanent,
+            success: true,
+            errorMessage: nil
+        )
+    }
+
     // MARK: - Pre-canned Mock Data
 
     public static let defaultSampleApps: [InstalledApp] = [
