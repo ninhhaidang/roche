@@ -3,6 +3,8 @@ import Foundation
 public protocol CleanListParsing: Sendable {
     func parse(content: String) -> [CleanCategoryKind: [CleanItem]]
     func parseCategories(content: String, trashCategory: CleanCategory?) -> [CleanCategory]
+    func parsePurgeOutput(_ output: String) -> [CleanItem]
+    func parseInstallerOutput(_ output: String) -> [CleanItem]
 }
 
 extension CleanListParsing {
@@ -172,5 +174,91 @@ public struct CleanListParser: CleanListParsing, Sendable {
         default:
             return 0
         }
+    }
+
+    public func parsePurgeOutput(_ output: String) -> [CleanItem] {
+        var items: [CleanItem] = []
+        // Pattern matching: ✓ [DRY RUN] <path>, <size>
+        // Or without checkmark/bracket: [DRY RUN] <path>, <size>
+        for line in output.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.contains("[DRY RUN]") else { continue }
+            guard let commaIdx = trimmed.lastIndex(of: ",") else { continue }
+            guard let dryRunIdx = trimmed.range(of: "[DRY RUN]")?.upperBound else { continue }
+
+            let rawPath = String(trimmed[dryRunIdx..<commaIdx]).trimmingCharacters(in: .whitespaces)
+            let sizePart = String(trimmed[trimmed.index(after: commaIdx)...]).trimmingCharacters(in: .whitespaces)
+
+            // Ignore empty or summary lines if any
+            if rawPath.isEmpty || sizePart.isEmpty { continue }
+
+            let expandedPath = (rawPath as NSString).expandingTildeInPath
+            let name = URL(fileURLWithPath: expandedPath).lastPathComponent
+            let sizeBytes = Self.parseByteString(sizePart)
+
+            items.append(
+                CleanItem(
+                    path: expandedPath,
+                    name: name.isEmpty ? rawPath : name,
+                    sizeBytes: sizeBytes,
+                    details: "Dự án cũ: \(rawPath)"
+                )
+            )
+        }
+        return items
+    }
+
+    public func parseInstallerOutput(_ output: String) -> [CleanItem] {
+        var items: [CleanItem] = []
+        // Pattern matching installer menu row:
+        // e.g. "➤ ○ Tinycast-0.11.3.dmg                         6.8MB | Downloads"
+        // or   "  ○ Docker.dmg                                 500.0MB | Downloads"
+        let home = NSHomeDirectory()
+        let sourceToDir: [String: String] = [
+            "Downloads": "\(home)/Downloads",
+            "Desktop": "\(home)/Desktop",
+            "Documents": "\(home)/Documents",
+            "Public": "\(home)/Public",
+            "Homebrew": "\(home)/Library/Caches/Homebrew"
+        ]
+
+        for line in output.components(separatedBy: .newlines) {
+            // Strip ANSI escape sequences if present
+            let cleanLine = line.replacingOccurrences(of: "\u{001B}\\[[0-9;]*[a-zA-Z]", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+
+            guard cleanLine.contains("○") || cleanLine.contains("●") else { continue }
+            guard let pipeIdx = cleanLine.firstIndex(of: "|") else { continue }
+
+            let beforePipe = String(cleanLine[..<pipeIdx]).trimmingCharacters(in: .whitespaces)
+            let sourcePart = String(cleanLine[cleanLine.index(after: pipeIdx)...]).trimmingCharacters(in: .whitespaces)
+
+            // Extract marker
+            var rowText = beforePipe
+            if let circleIdx = rowText.firstIndex(where: { $0 == "○" || $0 == "●" }) {
+                rowText = String(rowText[rowText.index(after: circleIdx)...]).trimmingCharacters(in: .whitespaces)
+            }
+
+            // rowText now has "<filename>       <size>"
+            let components = rowText.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+            guard components.count >= 2 else { continue }
+
+            let sizePart = components.last!
+            let fileName = components.dropLast().joined(separator: " ")
+
+            let sizeBytes = Self.parseByteString(sizePart)
+            let dir = sourceToDir[sourcePart] ?? "\(home)/\(sourcePart)"
+            let fullPath = "\(dir)/\(fileName)"
+
+            items.append(
+                CleanItem(
+                    path: fullPath,
+                    name: fileName,
+                    sizeBytes: sizeBytes,
+                    details: "Thư mục: \(sourcePart)"
+                )
+            )
+        }
+        return items
     }
 }

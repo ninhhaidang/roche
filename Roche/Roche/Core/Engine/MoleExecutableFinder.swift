@@ -227,4 +227,146 @@ public nonisolated struct MoleExecutableFinder: Sendable {
 
         return nil
     }
+
+    public func findPurgeExecutable(dryRun: Bool = false) -> ExecutableTarget? {
+        let fileManager = FileManager.default
+        let purgeArgs = dryRun ? ["purge", "--dry-run"] : ["purge", "--yes"]
+
+        // 1. Embedded inside App Bundle (mole/mo or mole/bin/purge.sh)
+        if let resourceURL = Bundle.main.resourceURL {
+            let bundledMo = resourceURL.appendingPathComponent("mole/mo")
+            if fileManager.isExecutableFile(atPath: bundledMo.path) {
+                return ExecutableTarget(url: bundledMo, arguments: purgeArgs)
+            }
+
+            let bundledPurgeSh = resourceURL.appendingPathComponent("mole/bin/purge.sh")
+            if fileManager.isExecutableFile(atPath: bundledPurgeSh.path) {
+                return ExecutableTarget(url: bundledPurgeSh, arguments: dryRun ? ["--dry-run"] : ["--yes"])
+            }
+        }
+
+        // 2. Direct mo in App Bundle root
+        if let bundleMo = Bundle.main.url(forResource: "mo", withExtension: nil),
+           fileManager.isExecutableFile(atPath: bundleMo.path) {
+            return ExecutableTarget(url: bundleMo, arguments: purgeArgs)
+        }
+
+        // 3. Dynamic Homebrew purge in Cellar
+        let cellarRoots = ["/opt/homebrew/Cellar/mole", "/usr/local/Cellar/mole"]
+        for cellar in cellarRoots {
+            if let versions = try? fileManager.contentsOfDirectory(atPath: cellar) {
+                for ver in versions.sorted().reversed() {
+                    let candidate = "\(cellar)/\(ver)/libexec/bin/purge.sh"
+                    if fileManager.isExecutableFile(atPath: candidate) {
+                        return ExecutableTarget(url: URL(fileURLWithPath: candidate), arguments: dryRun ? ["--dry-run"] : ["--yes"])
+                    }
+                }
+            }
+        }
+
+        // 4. Standard CLI installations (Homebrew symlink)
+        let cliCandidates = [
+            "/opt/homebrew/bin/mo",
+            "/usr/local/bin/mo",
+            "/opt/homebrew/bin/mole",
+            "/usr/local/bin/mole"
+        ]
+        for candidate in cliCandidates {
+            if fileManager.isExecutableFile(atPath: candidate) {
+                return ExecutableTarget(url: URL(fileURLWithPath: candidate), arguments: purgeArgs)
+            }
+        }
+
+        // 5. Local vendor/mole fallback (Development)
+        let devVendorCandidates = [
+            "vendor/mole/mo",
+            "vendor/mole/bin/purge.sh",
+            "../vendor/mole/mo",
+            "../vendor/mole/bin/purge.sh"
+        ]
+        for candidate in devVendorCandidates {
+            let resolvedPath = URL(fileURLWithPath: candidate).standardized.path
+            if fileManager.isExecutableFile(atPath: resolvedPath) {
+                let url = URL(fileURLWithPath: resolvedPath)
+                if candidate.contains("purge.sh") {
+                    return ExecutableTarget(url: url, arguments: dryRun ? ["--dry-run"] : ["--yes"])
+                } else {
+                    return ExecutableTarget(url: url, arguments: purgeArgs)
+                }
+            }
+        }
+
+        return nil
+    }
+
+    public func findInstallerExecutable(dryRun: Bool = false) -> ExecutableTarget? {
+        let fileManager = FileManager.default
+        let installerArgs = dryRun ? ["installer", "--dry-run"] : ["installer"]
+
+        // 1. Embedded inside App Bundle (mole/mo or mole/bin/installer.sh)
+        if let resourceURL = Bundle.main.resourceURL {
+            let bundledMo = resourceURL.appendingPathComponent("mole/mo")
+            if fileManager.isExecutableFile(atPath: bundledMo.path) {
+                return ExecutableTarget(url: bundledMo, arguments: installerArgs)
+            }
+
+            let bundledInstallerSh = resourceURL.appendingPathComponent("mole/bin/installer.sh")
+            if fileManager.isExecutableFile(atPath: bundledInstallerSh.path) {
+                return ExecutableTarget(url: bundledInstallerSh, arguments: dryRun ? ["--dry-run"] : [])
+            }
+        }
+
+        // 2. Direct mo in App Bundle root
+        if let bundleMo = Bundle.main.url(forResource: "mo", withExtension: nil),
+           fileManager.isExecutableFile(atPath: bundleMo.path) {
+            return ExecutableTarget(url: bundleMo, arguments: installerArgs)
+        }
+
+        // 3. Dynamic Homebrew installer in Cellar
+        let cellarRoots = ["/opt/homebrew/Cellar/mole", "/usr/local/Cellar/mole"]
+        for cellar in cellarRoots {
+            if let versions = try? fileManager.contentsOfDirectory(atPath: cellar) {
+                for ver in versions.sorted().reversed() {
+                    let candidate = "\(cellar)/\(ver)/libexec/bin/installer.sh"
+                    if fileManager.isExecutableFile(atPath: candidate) {
+                        return ExecutableTarget(url: URL(fileURLWithPath: candidate), arguments: dryRun ? ["--dry-run"] : [])
+                    }
+                }
+            }
+        }
+
+        // 4. Standard CLI installations (Homebrew symlink)
+        let cliCandidates = [
+            "/opt/homebrew/bin/mo",
+            "/usr/local/bin/mo",
+            "/opt/homebrew/bin/mole",
+            "/usr/local/bin/mole"
+        ]
+        for candidate in cliCandidates {
+            if fileManager.isExecutableFile(atPath: candidate) {
+                return ExecutableTarget(url: URL(fileURLWithPath: candidate), arguments: installerArgs)
+            }
+        }
+
+        // 5. Local vendor/mole fallback (Development)
+        let devVendorCandidates = [
+            "vendor/mole/mo",
+            "vendor/mole/bin/installer.sh",
+            "../vendor/mole/mo",
+            "../vendor/mole/bin/installer.sh"
+        ]
+        for candidate in devVendorCandidates {
+            let resolvedPath = URL(fileURLWithPath: candidate).standardized.path
+            if fileManager.isExecutableFile(atPath: resolvedPath) {
+                let url = URL(fileURLWithPath: resolvedPath)
+                if candidate.contains("installer.sh") {
+                    return ExecutableTarget(url: url, arguments: dryRun ? ["--dry-run"] : [])
+                } else {
+                    return ExecutableTarget(url: url, arguments: installerArgs)
+                }
+            }
+        }
+
+        return nil
+    }
 }

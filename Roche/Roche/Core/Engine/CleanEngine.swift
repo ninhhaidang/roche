@@ -82,8 +82,11 @@ public final class CleanEngine {
 
     public func selectAll() {
         guard case .ready(let result, _) = state else { return }
-        let nonEmptyKinds = Set(result.categories.filter { $0.sizeBytes > 0 || $0.itemCount > 0 }.map(\.kind))
-        state = .ready(result: result, selectedCategories: nonEmptyKinds)
+        // projectArtifacts defaults to unselected/unchecked to prevent accidental project build deletion
+        let eligibleKinds = Set(result.categories
+            .filter { $0.kind != .projectArtifacts && ($0.sizeBytes > 0 || $0.itemCount > 0) }
+            .map(\.kind))
+        state = .ready(result: result, selectedCategories: eligibleKinds)
     }
 
     public func deselectAll() {
@@ -106,8 +109,10 @@ public final class CleanEngine {
             try Task.checkCancellation()
             let result = try await client.scanCleanables()
             try Task.checkCancellation()
-            let detected = Set(result.categories.filter { $0.sizeBytes > 0 || $0.itemCount > 0 }.map(\.kind))
-            let defaultSelected = detected.isEmpty ? Set(CleanCategoryKind.allCases) : detected
+            let detected = Set(result.categories
+                .filter { $0.kind != .projectArtifacts && ($0.sizeBytes > 0 || $0.itemCount > 0) }
+                .map(\.kind))
+            let defaultSelected = detected.isEmpty ? Set(CleanCategoryKind.allCases.filter { $0 != .projectArtifacts }) : detected
             state = .ready(result: result, selectedCategories: defaultSelected)
         } catch is CancellationError {
             state = .idle

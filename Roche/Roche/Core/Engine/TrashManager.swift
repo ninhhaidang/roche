@@ -3,6 +3,7 @@ import Foundation
 public protocol TrashManaging: Sendable {
     func fetchTrashInfo() async -> (sizeBytes: UInt64, itemCount: Int)
     func emptyTrash() async -> Bool
+    func moveToTrash(path: String) async -> Bool
 }
 
 public struct SystemTrashManager: TrashManaging, Sendable {
@@ -35,6 +36,18 @@ public struct SystemTrashManager: TrashManaging, Sendable {
             return errorInfo == nil
         }
         return false
+    }
+
+    public func moveToTrash(path: String) async -> Bool {
+        let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        var resultingURL: NSURL?
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: &resultingURL)
+            return true
+        } catch {
+            return false
+        }
     }
 
     private func calculateDirectorySize(atPath path: String) -> UInt64 {

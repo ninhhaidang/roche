@@ -5,7 +5,8 @@ public nonisolated enum CleanCategoryKind: String, CaseIterable, Identifiable, C
     case appCaches = "app_caches"
     case logs = "logs"
     case trash = "trash"
-
+    case projectArtifacts = "project_artifacts"
+    case installers = "installers"
     public var id: String { rawValue }
 
     public var title: String {
@@ -18,6 +19,10 @@ public nonisolated enum CleanCategoryKind: String, CaseIterable, Identifiable, C
             return "Hệ Thống & Logs"
         case .trash:
             return "Thùng Rác (Trash)"
+        case .projectArtifacts:
+            return "Project Artifacts"
+        case .installers:
+            return "Installers & DMGs"
         }
     }
 
@@ -31,6 +36,10 @@ public nonisolated enum CleanCategoryKind: String, CaseIterable, Identifiable, C
             return "Nhật ký hệ thống, diagnostic reports, crash logs"
         case .trash:
             return "Tệp tin trong thư mục Thùng rác (~/.Trash)"
+        case .projectArtifacts:
+            return "Thư mục build node_modules, .venv, target, dist trong dự án cũ"
+        case .installers:
+            return "Tệp cài đặt .dmg, .pkg, .iso, .zip trong Downloads"
         }
     }
 
@@ -44,6 +53,10 @@ public nonisolated enum CleanCategoryKind: String, CaseIterable, Identifiable, C
             return "doc.text.fill"
         case .trash:
             return "trash.fill"
+        case .projectArtifacts:
+            return "curlybraces"
+        case .installers:
+            return "shippingbox"
         }
     }
 }
