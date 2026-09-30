@@ -1,7 +1,38 @@
 import SwiftUI
 
+@MainActor
+public final class SettingsViewModel: ObservableObject {
+    @Published public var customPurgePaths: [String] = []
+    @Published public var newPurgePathInput: String = ""
+    public let purgeManager: PurgePathsManager
+
+    public init(purgeManager: PurgePathsManager = PurgePathsManager()) {
+        self.purgeManager = purgeManager
+        self.customPurgePaths = purgeManager.loadCustomPaths()
+    }
+
+    public func reload() {
+        self.customPurgePaths = purgeManager.loadCustomPaths()
+    }
+
+    public func addPath() {
+        let trimmed = newPurgePathInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        try? purgeManager.addPath(trimmed)
+        self.customPurgePaths = purgeManager.loadCustomPaths()
+        self.newPurgePathInput = ""
+    }
+
+    public func removePath(_ path: String) {
+        try? purgeManager.removePath(path)
+        self.customPurgePaths = purgeManager.loadCustomPaths()
+    }
+}
+
 public struct SettingsView: View {
     @Bindable var telemetryService: TelemetryService
+    @StateObject private var viewModel = SettingsViewModel()
+
     public init(telemetryService: TelemetryService? = nil) {
         self.telemetryService = telemetryService ?? TelemetryService()
     }
@@ -26,11 +57,17 @@ public struct SettingsView: View {
                     // 3. Cleaner & Whitelist Section
                     cleanerSettingsSection
 
-                    // 4. System & App Info
+                    // 4. Project Purge Paths Section
+                    projectPurgePathsSection
+
+                    // 5. System & App Info
                     hardwareAndAppInfoSection
                 }
                 .padding(24)
             }
+        }
+        .onAppear {
+            viewModel.reload()
         }
     }
 
@@ -39,9 +76,10 @@ public struct SettingsView: View {
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("CÀI ĐẶT")
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(.orange)
-            Text("Cấu Hình Ứng Dụng & Mole Engine")
+                .tracking(0.5)
+            Text("Tùy Chọn Ứng Dụng & Cấu Hình Engine")
                 .font(.title2.bold())
                 .foregroundStyle(.white)
         }
@@ -49,66 +87,71 @@ public struct SettingsView: View {
 
     private var autoRefreshSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("TỰ ĐỘNG LÀM MỚI (AUTO-REFRESH TELEMETRY)")
+            Text("TỰ ĐỘNG LÀM MỚI TELEMETRY")
                 .font(.caption.bold().monospaced())
                 .foregroundStyle(.secondary)
 
-            VStack(spacing: 14) {
-                // Toggle row
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Tự động cập nhật chỉ số hệ thống")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                        Text("Định kỳ thu thập CPU, RAM, nhiệt độ, mạng và ổ đĩa theo thời gian thực")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: $telemetryService.isAutoRefreshEnabled)
-                        .toggleStyle(.switch)
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Tự động cập nhật dữ liệu phần cứng")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Text("Polling định kỳ trạng thái CPU, Memory, Thermals và Disk từ Mole CLI.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
-                if telemetryService.isAutoRefreshEnabled {
-                    Divider().background(Color.white.opacity(0.05))
+                Spacer()
 
-                    // Interval picker row
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Tần số cập nhật (Interval)")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white)
-                            Text(telemetryService.interval.detailedDescription)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                AutoRefreshToggleControl(
+                    interval: Binding(
+                        get: { telemetryService.refreshInterval },
+                        set: { telemetryService.updateInterval($0) }
+                    ),
+                    isPolling: Binding(
+                        get: { telemetryService.isPolling },
+                        set: { if $0 { telemetryService.start() } else { telemetryService.stop() } }
+                    )
+                )
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.03))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            )
 
-                        Spacer()
-
-                        Picker("", selection: $telemetryService.interval) {
-                            ForEach(AutoRefreshInterval.allCases) { item in
-                                Text(item.label).tag(item)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 120)
-                    }
-
-                    Divider().background(Color.white.opacity(0.05))
-
-                    // Status indicator
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 6, height: 6)
-                        Text("Đang chạy ngầm mỗi \(telemetryService.interval.label)")
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.green)
-                        Spacer()
-                    }
+            // Manual Refresh
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Làm mới thủ công")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white)
+                    Text("Lấy snapshot số liệu hệ thống ngay lập tức.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+
+                Spacer()
+
+                Button {
+                    Task {
+                        await telemetryService.refresh()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Làm mới ngay")
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.orange.opacity(0.8))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
             }
             .padding(16)
             .background(Color.white.opacity(0.03))
@@ -123,43 +166,49 @@ public struct SettingsView: View {
     private var engineSection: some View {
         let engine = telemetryService.engineInfo
         return VStack(alignment: .leading, spacing: 14) {
-            Text("TRẠNG THÁI MOLE ENGINE")
+            Text("THÔNG TIN MOLE ENGINE")
                 .font(.caption.bold().monospaced())
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 12) {
                 HStack {
-                    Text("Nguồn Engine").foregroundStyle(.secondary)
-                    Spacer()
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(engine.source == .notFound ? Color.red : Color.green)
-                            .frame(width: 7, height: 7)
-                        Text(engine.source.rawValue)
-                            .foregroundStyle(.white)
-                            .font(.system(size: 12, weight: .semibold))
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text("Trạng thái nhị phân CLI:")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+
+                            Text(engine.isAvailable ? "ĐÃ KẾT NỐI" : "KHÔNG TÌM THẤY")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(engine.isAvailable ? Color.green.opacity(0.2) : Color.red.opacity(0.2))
+                                .foregroundStyle(engine.isAvailable ? .green : .red)
+                                .clipShape(Capsule())
+                        }
+
+                        if let path = engine.executablePath {
+                            Text(path)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        } else {
+                            Text("Chưa tìm thấy executable 'mo' hoặc 'status-go' trên hệ thống.")
+                                .font(.caption)
+                                .foregroundStyle(.red.opacity(0.8))
+                        }
                     }
+
+                    Spacer()
                 }
 
                 Divider().background(Color.white.opacity(0.05))
 
                 HStack {
-                    Text("Đường dẫn thực thi").foregroundStyle(.secondary)
+                    infoRow(label: "Nguồn nhị phân", value: engine.source.description)
                     Spacer()
-                    Text(engine.executablePath)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.orange)
-                        .lineLimit(1)
-                }
-
-                Divider().background(Color.white.opacity(0.05))
-
-                HStack {
-                    Text("Phiên bản Mole Core").foregroundStyle(.secondary)
-                    Spacer()
-                    Text(engine.version)
-                        .foregroundStyle(.white)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    infoRow(label: "Phiên bản CLI", value: engine.version ?? "Unknown")
                 }
             }
             .padding(16)
@@ -214,6 +263,125 @@ public struct SettingsView: View {
         }
     }
 
+    private var projectPurgePathsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("CẤU HÌNH ĐƯỜNG DẪN DỰ ÁN (PROJECT PURGE)")
+                .font(.caption.bold().monospaced())
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Thư mục quét Build Artifacts:")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Text("Mole quét các thư mục này để tìm node_modules, target, .build và giải phóng dung lượng.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                // Default paths badge row
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Đường dẫn mặc định của hệ thống:")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(PurgePathsManager.defaultPaths, id: \.self) { path in
+                                Text(path)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.white.opacity(0.06))
+                                    .foregroundStyle(.white.opacity(0.8))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                        }
+                    }
+                }
+
+                Divider().background(Color.white.opacity(0.05))
+
+                // Custom paths list
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Đường dẫn tùy chỉnh bổ sung (\(viewModel.customPurgePaths.count)):")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+
+                    if viewModel.customPurgePaths.isEmpty {
+                        Text("Chưa có thư mục tùy chỉnh nào được cấu hình.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .italic()
+                    } else {
+                        ForEach(viewModel.customPurgePaths, id: \.self) { path in
+                            HStack {
+                                Image(systemName: "folder.fill")
+                                    .foregroundStyle(Color.cyan)
+                                    .font(.system(size: 12))
+                                Text(path)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Button {
+                                    viewModel.removePath(path)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(Color.red.opacity(0.8))
+                                        .font(.system(size: 14))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
+
+                    // Add custom path input
+                    HStack(spacing: 8) {
+                        TextField("Thêm đường dẫn mới (vd: /Volumes/Data/Repos)", text: $viewModel.newPurgePathInput)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12, design: .monospaced))
+                            .padding(8)
+                            .background(Color.white.opacity(0.06))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+
+                        Button {
+                            viewModel.addPath()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus.circle.fill")
+                                Text("Thêm")
+                            }
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.cyan)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(viewModel.newPurgePathInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .padding(.top, 4)
+                }
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.03))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            )
+        }
+    }
+
     private var hardwareAndAppInfoSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("THÔNG TIN PHẦN CỨNG & HỆ THỐNG")
@@ -226,15 +394,17 @@ public struct SettingsView: View {
                     infoRow(label: "Bộ xử lý (CPU)", value: hw.cpuModel)
                     infoRow(label: "Bộ nhớ RAM", value: hw.totalRam)
                     infoRow(label: "Dung lượng đĩa", value: hw.diskSize)
-                    infoRow(label: "Hệ điều hành", value: hw.osVersion)
+                    infoRow(label: "macOS Build", value: hw.osVersion)
                 } else {
-                    infoRow(label: "Hệ thống", value: "Apple Silicon Mac")
+                    Text("Đang tải dữ liệu phần cứng...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Divider().background(Color.white.opacity(0.05))
 
-                infoRow(label: "Phiên bản Roche", value: "0.1.0 (Architecture: Deep Module)")
-                infoRow(label: "Bản quyền", value: "MIT License • tw93/mole")
+                infoRow(label: "Ứng dụng Roche", value: "v1.0.0 (Native GUI)")
+                infoRow(label: "Giao thức Seam", value: "MoleClientProtocol (Swift 6)")
             }
             .padding(16)
             .background(Color.white.opacity(0.03))
@@ -256,10 +426,10 @@ public struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(desc)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -267,13 +437,19 @@ public struct SettingsView: View {
 
     private func infoRow(label: String, value: String) -> some View {
         HStack {
-            Text(label).foregroundStyle(.secondary).font(.system(size: 13))
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
             Spacer()
-            Text(value).foregroundStyle(.white).font(.system(size: 13, weight: .medium))
+            Text(value)
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white)
         }
     }
 }
 
-#Preview("Settings View") {
-    SettingsView(telemetryService: TelemetryService(client: MockMoleClient()))
+public struct SettingsView_Previews: PreviewProvider {
+    public static var previews: some View {
+        SettingsView(telemetryService: TelemetryService(client: MockMoleClient()))
+    }
 }
