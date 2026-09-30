@@ -25,6 +25,8 @@ struct AllTestsRunner {
             try await runMoleExecutableFinderTests()
             print("\n--- Running CleanEngine Purge & Installer Tests ---")
             try await runCleanEnginePurgeInstallerTests()
+            print("\n--- Running PTYProcessRunner Tests ---")
+            try await runPTYProcessRunnerTests()
 
             print("\n===============================")
             print("ALL SUITES PASSED SUCCESSFULLY!")
