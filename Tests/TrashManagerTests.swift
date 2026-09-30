@@ -17,6 +17,14 @@ final class MockTrashManager: TrashManaging, @unchecked Sendable {
         emptyTrashCalled = true
         return emptyTrashResult
     }
+
+    var movedToTrashPaths: [String] = []
+    var moveToTrashResult = true
+
+    func moveToTrash(path: String) async -> Bool {
+        movedToTrashPaths.append(path)
+        return moveToTrashResult
+    }
 }
 
 final class MockSubprocessRunner: SubprocessRunning, @unchecked Sendable {

@@ -110,10 +110,31 @@ public nonisolated final class MockMoleClient: MoleClientProtocol, Sendable {
                     CleanItem(path: "/Users/dev/.Trash/Installer.dmg", name: "Installer.dmg", sizeBytes: 460_000_000, details: "Disk image")
                 ],
                 isSelected: true
+            ),
+            CleanCategory(
+                type: .projectArtifacts,
+                sizeBytes: 850_000_000,
+                itemCount: 4,
+                items: [
+                    CleanItem(path: "/Users/dev/Projects/web-app/node_modules", name: "node_modules", sizeBytes: 420_000_000, details: "Dự án cũ: ~/Projects/web-app"),
+                    CleanItem(path: "/Users/dev/Projects/api-server/.venv", name: ".venv", sizeBytes: 280_000_000, details: "Dự án cũ: ~/Projects/api-server"),
+                    CleanItem(path: "/Users/dev/Projects/rust-cli/target", name: "target", sizeBytes: 150_000_000, details: "Dự án cũ: ~/Projects/rust-cli")
+                ],
+                isSelected: false
+            ),
+            CleanCategory(
+                type: .installers,
+                sizeBytes: 1_120_000_000,
+                itemCount: 2,
+                items: [
+                    CleanItem(path: "/Users/dev/Downloads/VSCode-darwin-arm64.zip", name: "VSCode-darwin-arm64.zip", sizeBytes: 620_000_000, details: "Thư mục: Downloads"),
+                    CleanItem(path: "/Users/dev/Downloads/Postman-darwin-arm64.dmg", name: "Postman-darwin-arm64.dmg", sizeBytes: 500_000_000, details: "Thư mục: Downloads")
+                ],
+                isSelected: true
             )
         ],
-        totalSizeBytes: 7_500_000_000,
-        totalItemsCount: 309,
+        totalSizeBytes: 9_470_000_000,
+        totalItemsCount: 315,
         scannedAt: Date()
     )
 

@@ -450,11 +450,24 @@ public struct CleanerView: View {
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
 
+                        if category.type == .projectArtifacts {
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 9))
+                                Text("Chỉ dành cho Lập trình viên")
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            }
+                            .foregroundStyle(Color.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.18))
+                            .clipShape(Capsule())
+                        }
+
                         Text("(\(category.itemCount) mục)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.white.opacity(0.4))
                     }
-
                     Text(category.subtitle)
                         .font(.system(size: 12))
                         .foregroundStyle(.white.opacity(0.5))
@@ -555,6 +568,10 @@ public struct CleanerView: View {
             return .purple
         case .trash:
             return .red
+        case .projectArtifacts:
+            return .yellow
+        case .installers:
+            return .mint
         }
     }
 }
