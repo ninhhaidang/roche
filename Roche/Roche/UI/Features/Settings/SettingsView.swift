@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 @MainActor
 public final class SettingsViewModel: ObservableObject {
@@ -103,16 +104,7 @@ public struct SettingsView: View {
 
                 Spacer()
 
-                AutoRefreshToggleControl(
-                    interval: Binding(
-                        get: { telemetryService.refreshInterval },
-                        set: { telemetryService.updateInterval($0) }
-                    ),
-                    isPolling: Binding(
-                        get: { telemetryService.isPolling },
-                        set: { if $0 { telemetryService.start() } else { telemetryService.stop() } }
-                    )
-                )
+                AutoRefreshToggleControl(service: telemetryService)
             }
             .padding(16)
             .background(Color.white.opacity(0.03))
@@ -165,6 +157,7 @@ public struct SettingsView: View {
 
     private var engineSection: some View {
         let engine = telemetryService.engineInfo
+        let isConnected = engine.source != .notFound
         return VStack(alignment: .leading, spacing: 14) {
             Text("THÔNG TIN MOLE ENGINE")
                 .font(.caption.bold().monospaced())
@@ -178,17 +171,17 @@ public struct SettingsView: View {
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(.white)
 
-                            Text(engine.isAvailable ? "ĐÃ KẾT NỐI" : "KHÔNG TÌM THẤY")
+                            Text(isConnected ? "ĐÃ KẾT NỐI" : "KHÔNG TÌM THẤY")
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 2)
-                                .background(engine.isAvailable ? Color.green.opacity(0.2) : Color.red.opacity(0.2))
-                                .foregroundStyle(engine.isAvailable ? .green : .red)
+                                .background(isConnected ? Color.green.opacity(0.2) : Color.red.opacity(0.2))
+                                .foregroundStyle(isConnected ? .green : .red)
                                 .clipShape(Capsule())
                         }
 
-                        if let path = engine.executablePath {
-                            Text(path)
+                        if isConnected {
+                            Text(engine.executablePath)
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -206,9 +199,9 @@ public struct SettingsView: View {
                 Divider().background(Color.white.opacity(0.05))
 
                 HStack {
-                    infoRow(label: "Nguồn nhị phân", value: engine.source.description)
+                    infoRow(label: "Nguồn nhị phân", value: engine.source.rawValue)
                     Spacer()
-                    infoRow(label: "Phiên bản CLI", value: engine.version ?? "Unknown")
+                    infoRow(label: "Phiên bản CLI", value: engine.version)
                 }
             }
             .padding(16)
