@@ -51,6 +51,10 @@ _Avoid_: Clean type, Target, Group
 The capability discovering installed applications and removing their binaries and associated residual files.
 _Avoid_: App remover, Program deleter
 
+**Residual File**:
+The configuration, cache, container, or launch agent files left behind by an uninstalled application.
+_Avoid_: Leftover junk, Trash file, Orphaned data
+
 **System Optimization**:
 The execution of safe maintenance routines repairing system configurations, flushing DNS, and refreshing caches.
 _Avoid_: System tuneup, Speedup
