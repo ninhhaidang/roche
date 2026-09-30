@@ -13,3 +13,4 @@ xcuserdata/
 # Scratch / Temp
 .scratch/
 .temp/
+.build/
