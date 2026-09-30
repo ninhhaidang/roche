@@ -27,6 +27,8 @@ struct AllTestsRunner {
             try await runCleanEnginePurgeInstallerTests()
             print("\n--- Running PTYProcessRunner Tests ---")
             try await runPTYProcessRunnerTests()
+            print("\n--- Running UninstallEngine Tests ---")
+            try await runUninstallEngineTests()
 
             print("\n===============================")
             print("ALL SUITES PASSED SUCCESSFULLY!")

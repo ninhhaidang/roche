@@ -369,4 +369,75 @@ public nonisolated struct MoleExecutableFinder: Sendable {
 
         return nil
     }
+
+    public func findUninstallExecutable(arguments: [String] = []) -> ExecutableTarget? {
+        let fileManager = FileManager.default
+        let uninstallMoArgs = ["uninstall"] + arguments
+
+        // 1. Embedded inside App Bundle (mole/mo or mole/bin/uninstall.sh)
+        if let resourceURL = Bundle.main.resourceURL {
+            let bundledMo = resourceURL.appendingPathComponent("mole/mo")
+            if fileManager.isExecutableFile(atPath: bundledMo.path) {
+                return ExecutableTarget(url: bundledMo, arguments: uninstallMoArgs)
+            }
+
+            let bundledUninstallSh = resourceURL.appendingPathComponent("mole/bin/uninstall.sh")
+            if fileManager.isExecutableFile(atPath: bundledUninstallSh.path) {
+                return ExecutableTarget(url: bundledUninstallSh, arguments: arguments)
+            }
+        }
+
+        // 2. Direct mo in App Bundle root
+        if let bundleMo = Bundle.main.url(forResource: "mo", withExtension: nil),
+           fileManager.isExecutableFile(atPath: bundleMo.path) {
+            return ExecutableTarget(url: bundleMo, arguments: uninstallMoArgs)
+        }
+
+        // 3. Dynamic Homebrew uninstall in Cellar
+        let cellarRoots = ["/opt/homebrew/Cellar/mole", "/usr/local/Cellar/mole"]
+        for cellar in cellarRoots {
+            if let versions = try? fileManager.contentsOfDirectory(atPath: cellar) {
+                for ver in versions.sorted().reversed() {
+                    let candidate = "\(cellar)/\(ver)/libexec/bin/uninstall.sh"
+                    if fileManager.isExecutableFile(atPath: candidate) {
+                        return ExecutableTarget(url: URL(fileURLWithPath: candidate), arguments: arguments)
+                    }
+                }
+            }
+        }
+
+        // 4. Standard CLI installations (Homebrew symlink)
+        let cliCandidates = [
+            "/opt/homebrew/bin/mo",
+            "/usr/local/bin/mo",
+            "/opt/homebrew/bin/mole",
+            "/usr/local/bin/mole"
+        ]
+        for candidate in cliCandidates {
+            if fileManager.isExecutableFile(atPath: candidate) {
+                return ExecutableTarget(url: URL(fileURLWithPath: candidate), arguments: uninstallMoArgs)
+            }
+        }
+
+        // 5. Local vendor/mole fallback (Development)
+        let devVendorCandidates = [
+            "vendor/mole/mo",
+            "vendor/mole/bin/uninstall.sh",
+            "../vendor/mole/mo",
+            "../vendor/mole/bin/uninstall.sh"
+        ]
+        for candidate in devVendorCandidates {
+            let resolvedPath = URL(fileURLWithPath: candidate).standardized.path
+            if fileManager.isExecutableFile(atPath: resolvedPath) {
+                let url = URL(fileURLWithPath: resolvedPath)
+                if candidate.contains("uninstall.sh") {
+                    return ExecutableTarget(url: url, arguments: arguments)
+                } else {
+                    return ExecutableTarget(url: url, arguments: uninstallMoArgs)
+                }
+            }
+        }
+
+        return nil
+    }
 }
