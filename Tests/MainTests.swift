@@ -33,6 +33,8 @@ struct AllTestsRunner {
             try await runUninstallEngineExecutionTests()
             print("\n--- Running OptimizeEngine Tests ---")
             try await runOptimizeEngineTests()
+            print("\n--- Running OptimizeEngine Streaming Tests ---")
+            try await runOptimizeEngineStreamingTests()
 
             print("\n===============================")
             print("ALL SUITES PASSED SUCCESSFULLY!")

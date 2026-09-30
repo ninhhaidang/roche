@@ -52,6 +52,91 @@ public final nonisolated class MockOptimizeEngine: OptimizeEngineProtocol, @unch
         return tasks
     }
 
+    public func runOptimization(dryRun: Bool = true) -> AsyncThrowingStream<OptimizeTaskEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                let delay = self.simulatedDelay
+                let canonicalTasks = Self.mockTasks20
+                var completedTasks: [OptimizeTask] = []
+
+                for canonical in canonicalTasks {
+                    if Task.isCancelled { break }
+                    continuation.yield(.started(taskName: canonical.name, category: canonical.category))
+                    continuation.yield(.line(raw: "➤ \(canonical.name)"))
+
+                    if delay > 0 {
+                        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    }
+
+                    let outcome: OptimizeTaskOutcome
+                    let message: String
+                    if dryRun {
+                        outcome = canonical.outcome
+                        message = canonical.message
+                    } else {
+                        if canonical.outcome == .attention {
+                            outcome = .attention
+                            message = canonical.message
+                        } else if canonical.outcome == .skipped {
+                            outcome = .skipped
+                            message = canonical.message
+                        } else {
+                            outcome = .applied
+                            message = "Đã tối ưu thành công"
+                        }
+                    }
+
+                    continuation.yield(.line(raw: "  → \(message)"))
+
+                    let finishedTask = OptimizeTask(
+                        id: canonical.id,
+                        name: canonical.name,
+                        category: canonical.category,
+                        status: .completed,
+                        outcome: outcome,
+                        message: message,
+                        details: [message]
+                    )
+                    completedTasks.append(finishedTask)
+                    continuation.yield(.completed(task: finishedTask))
+                }
+
+                var applied = 0
+                var unchanged = 0
+                var attention = 0
+                var skipped = 0
+                var failed = 0
+
+                for t in completedTasks {
+                    switch t.outcome {
+                    case .applied: applied += 1
+                    case .unchanged: unchanged += 1
+                    case .attention: attention += 1
+                    case .skipped: skipped += 1
+                    case .pending, .running: break
+                    }
+                    if t.status == .failed { failed += 1 }
+                }
+
+                let summary = OptimizeExecutionSummary(
+                    totalTasks: completedTasks.count,
+                    appliedCount: applied,
+                    unchangedCount: unchanged,
+                    attentionCount: attention,
+                    skippedCount: skipped,
+                    failedCount: failed,
+                    isDryRun: dryRun
+                )
+                continuation.yield(.finished(summary: summary))
+                continuation.finish()
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
+
     // MARK: - Static Fixtures
 
     public static var mockTasks20: [OptimizeTask] {
