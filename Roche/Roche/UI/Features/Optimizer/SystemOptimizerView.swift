@@ -6,8 +6,10 @@ public struct SystemOptimizerView: View {
     @State private var diagnosis: SystemDiagnosis
     @State private var isDryRun: Bool = true
     @State private var isOptimizing: Bool = false
+    @State private var currentlyExecutingTaskName: String? = nil
+    @State private var completionSummary: OptimizeExecutionSummary? = nil
+    @State private var latestLogLine: String? = nil
     @State private var errorMessage: String? = nil
-
     public init(
         engine: (any OptimizeEngineProtocol)? = nil,
         initialDiagnosis: SystemDiagnosis? = nil
@@ -57,6 +59,71 @@ public struct SystemOptimizerView: View {
 
                 // Hero Bottleneck Diagnosis Bento Card with Dry Run Switch
                 heroDiagnosisCard
+
+                // Completion Summary Card (if finished)
+                if let summary = completionSummary {
+                    HStack(spacing: 14) {
+                        Image(systemName: summary.failedCount > 0 ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(summary.failedCount > 0 ? Color.orange : Color(red: 0.2, green: 0.85, blue: 0.55))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(summary.displayText)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                            if let log = latestLogLine, isOptimizing {
+                                Text(log)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.6))
+                                    .lineLimit(1)
+                            }
+                        }
+                        Spacer()
+
+                        Button {
+                            withAnimation {
+                                completionSummary = nil
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.5))
+                                .padding(6)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(14)
+                    .background(Color.white.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .specularBorder(cornerRadius: 12, opacity: 0.25)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                } else if isOptimizing, let currentName = currentlyExecutingTaskName {
+                    // Live progress ticker while running
+                    HStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .frame(width: 16, height: 16)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Đang tối ưu: \(currentName)...")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.cyan)
+                            if let log = latestLogLine {
+                                Text(log)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.5))
+                                    .lineLimit(1)
+                            }
+                        }
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(Color.cyan.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.cyan.opacity(0.2), lineWidth: 1))
+                    .transition(.opacity)
+                }
 
                 // Error Banner (if any)
                 if let errorMessage {
@@ -253,35 +320,53 @@ public struct SystemOptimizerView: View {
     }
 
     private func taskRow(_ task: OptimizeTask) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: task.outcome.iconName)
-                .font(.system(size: 13))
-                .foregroundStyle(task.outcome.badgeColor)
+        let isExecutingThisTask = isOptimizing && (currentlyExecutingTaskName == task.name || (task.outcome == .running))
 
-            Text(task.name)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(1)
+        return HStack(spacing: 10) {
+            if isExecutingThisTask {
+                ProgressView()
+                    .scaleEffect(0.65)
+                    .frame(width: 14, height: 14)
+            } else {
+                Image(systemName: task.outcome.iconName)
+                    .font(.system(size: 13))
+                    .foregroundStyle(task.outcome.badgeColor)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(task.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(isExecutingThisTask ? Color.cyan : .white.opacity(0.9))
+                    .lineLimit(1)
+
+                if !task.message.isEmpty {
+                    Text(task.message)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .lineLimit(1)
+                }
+            }
 
             Spacer()
 
             // Dynamic Glow Badge
-            Text(task.outcome.rawValue)
+            Text(isExecutingThisTask ? "Đang xử lý..." : task.outcome.rawValue)
                 .font(.system(size: 10, weight: .semibold))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(task.outcome.badgeColor.opacity(0.15))
-                .foregroundStyle(task.outcome.badgeColor)
+                .background((isExecutingThisTask ? Color.cyan : task.outcome.badgeColor).opacity(0.15))
+                .foregroundStyle(isExecutingThisTask ? Color.cyan : task.outcome.badgeColor)
                 .clipShape(Capsule())
                 .overlay(
                     Capsule()
-                        .stroke(task.outcome.badgeColor.opacity(0.35), lineWidth: 0.8)
+                        .stroke((isExecutingThisTask ? Color.cyan : task.outcome.badgeColor).opacity(0.35), lineWidth: 0.8)
                 )
-                .shadow(color: task.outcome.badgeColor.opacity(0.35), radius: 4)
+                .shadow(color: (isExecutingThisTask ? Color.cyan : task.outcome.badgeColor).opacity(0.35), radius: 4)
         }
         .padding(8)
-        .background(Color.white.opacity(0.02))
+        .background(isExecutingThisTask ? Color.cyan.opacity(0.08) : Color.white.opacity(0.02))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .animation(.easeInOut(duration: 0.25), value: isExecutingThisTask)
     }
 
     // MARK: - Actions
@@ -304,27 +389,72 @@ public struct SystemOptimizerView: View {
         await MainActor.run {
             self.isOptimizing = true
             self.errorMessage = nil
+            self.completionSummary = nil
+            self.currentlyExecutingTaskName = nil
+            self.latestLogLine = nil
         }
         defer {
             Task { @MainActor in
                 self.isOptimizing = false
+                self.currentlyExecutingTaskName = nil
             }
         }
 
         do {
-            let updatedTasks = try await engine.runOptimization(dryRun: isDryRun)
-            await MainActor.run {
-                self.diagnosis = SystemDiagnosis(
-                    id: self.diagnosis.id,
-                    component: self.diagnosis.component,
-                    description: self.diagnosis.description,
-                    recommendation: self.diagnosis.recommendation,
-                    severity: self.diagnosis.severity,
-                    cpuUsagePercent: self.diagnosis.cpuUsagePercent,
-                    hasBottleneck: self.diagnosis.hasBottleneck,
-                    tasks: updatedTasks,
-                    rawOutput: self.diagnosis.rawOutput
-                )
+            let stream: AsyncThrowingStream<OptimizeTaskEvent, Error> = engine.runOptimization(dryRun: isDryRun)
+            for try await event in stream {
+                await MainActor.run {
+                    switch event {
+                    case .started(let taskName, _):
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            self.currentlyExecutingTaskName = taskName
+                            // Mark this task as running in the list
+                            var updated = self.diagnosis.tasks
+                            for idx in updated.indices {
+                                if updated[idx].name.lowercased() == taskName.lowercased() ||
+                                   updated[idx].name.lowercased().contains(taskName.lowercased()) ||
+                                   taskName.lowercased().contains(updated[idx].name.lowercased()) {
+                                    updated[idx].outcome = .running
+                                    updated[idx].status = .running
+                                    break
+                                }
+                            }
+                            self.diagnosis = self.diagnosis.with(tasks: updated)
+                        }
+
+                    case .line(let raw):
+                        self.latestLogLine = raw
+
+                    case .completed(let finishedTask):
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            var updated = self.diagnosis.tasks
+                            var matched = false
+                            for idx in updated.indices {
+                                if updated[idx].id == finishedTask.id ||
+                                   updated[idx].name.lowercased() == finishedTask.name.lowercased() ||
+                                   updated[idx].name.lowercased().contains(finishedTask.name.lowercased()) ||
+                                   finishedTask.name.lowercased().contains(updated[idx].name.lowercased()) {
+                                    updated[idx] = finishedTask
+                                    matched = true
+                                    break
+                                }
+                            }
+                            if !matched {
+                                updated.append(finishedTask)
+                            }
+                            self.diagnosis = self.diagnosis.with(tasks: updated)
+                            if self.currentlyExecutingTaskName == finishedTask.name {
+                                self.currentlyExecutingTaskName = nil
+                            }
+                        }
+
+                    case .finished(let summary):
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                            self.completionSummary = summary
+                            self.currentlyExecutingTaskName = nil
+                        }
+                    }
+                }
             }
         } catch {
             await MainActor.run {

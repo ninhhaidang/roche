@@ -174,6 +174,51 @@ public nonisolated struct OptimizeTask: Identifiable, Sendable, Equatable, Codab
     }
 }
 
+// MARK: - Optimize Streaming Event & Execution Summary
+
+public nonisolated enum OptimizeTaskEvent: Sendable, Equatable {
+    case started(taskName: String, category: OptimizeTaskCategory)
+    case line(raw: String)
+    case completed(task: OptimizeTask)
+    case finished(summary: OptimizeExecutionSummary)
+}
+
+public nonisolated struct OptimizeExecutionSummary: Sendable, Equatable, Codable {
+    public let totalTasks: Int
+    public let appliedCount: Int
+    public let unchangedCount: Int
+    public let attentionCount: Int
+    public let skippedCount: Int
+    public let failedCount: Int
+    public let isDryRun: Bool
+
+    public init(
+        totalTasks: Int = 20,
+        appliedCount: Int = 0,
+        unchangedCount: Int = 0,
+        attentionCount: Int = 0,
+        skippedCount: Int = 0,
+        failedCount: Int = 0,
+        isDryRun: Bool = false
+    ) {
+        self.totalTasks = totalTasks
+        self.appliedCount = appliedCount
+        self.unchangedCount = unchangedCount
+        self.attentionCount = attentionCount
+        self.skippedCount = skippedCount
+        self.failedCount = failedCount
+        self.isDryRun = isDryRun
+    }
+
+    public var displayText: String {
+        if isDryRun {
+            return "Mô phỏng hoàn tất: \(appliedCount) có thể tối ưu, \(unchangedCount) đã tối ưu sẵn, \(attentionCount) cần chú ý, \(skippedCount) bỏ qua"
+        } else {
+            return "Tối ưu hóa hoàn tất: \(appliedCount) đã tối ưu, \(unchangedCount) đã tối ưu sẵn, \(attentionCount) cần chú ý, \(skippedCount) bỏ qua\(failedCount > 0 ? ", \(failedCount) lỗi" : "")"
+        }
+    }
+}
+
 // MARK: - Diagnosis Severity
 
 public nonisolated enum DiagnosisSeverity: String, CaseIterable, Identifiable, Equatable, Codable, Sendable {
@@ -225,5 +270,19 @@ public nonisolated struct SystemDiagnosis: Identifiable, Sendable, Equatable, Co
         self.hasBottleneck = hasBottleneck
         self.tasks = tasks
         self.rawOutput = rawOutput
+    }
+
+    public func with(tasks: [OptimizeTask]) -> SystemDiagnosis {
+        SystemDiagnosis(
+            id: id,
+            component: component,
+            description: description,
+            recommendation: recommendation,
+            severity: severity,
+            cpuUsagePercent: cpuUsagePercent,
+            hasBottleneck: hasBottleneck,
+            tasks: tasks,
+            rawOutput: rawOutput
+        )
     }
 }

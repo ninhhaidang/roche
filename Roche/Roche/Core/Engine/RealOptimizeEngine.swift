@@ -3,15 +3,18 @@ import Foundation
 public final nonisolated class RealOptimizeEngine: OptimizeEngineProtocol, Sendable {
     private let finder: MoleExecutableFinder
     private let runner: any SubprocessRunning
+    private let ptyRunner: any PTYProcessRunning
     private let timeoutSeconds: TimeInterval
 
     public init(
         finder: MoleExecutableFinder = MoleExecutableFinder(),
         runner: any SubprocessRunning = SubprocessRunner(),
+        ptyRunner: any PTYProcessRunning = PTYProcessRunner(),
         timeoutSeconds: TimeInterval = 45.0
     ) {
         self.finder = finder
         self.runner = runner
+        self.ptyRunner = ptyRunner
         self.timeoutSeconds = timeoutSeconds
     }
 
@@ -52,6 +55,252 @@ public final nonisolated class RealOptimizeEngine: OptimizeEngineProtocol, Senda
 
         let diagnosis = Self.parseDiagnosis(from: output.stdoutString)
         return diagnosis.tasks
+    }
+
+    public func runOptimization(dryRun: Bool = true) -> AsyncThrowingStream<OptimizeTaskEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                guard let target = self.finder.findOptimizeExecutable(dryRun: dryRun) else {
+                    continuation.finish(throwing: MoleError.executableNotFound)
+                    return
+                }
+
+                let ptyStream = self.ptyRunner.stream(
+                    executableURL: target.url,
+                    arguments: target.arguments,
+                    environment: [
+                        "LC_ALL": "C",
+                        "LANG": "C",
+                        "TERM": "xterm-256color"
+                    ],
+                    timeout: self.timeoutSeconds
+                )
+
+                var currentTaskName: String? = nil
+                var currentCategory: OptimizeTaskCategory = .systemAndSearch
+                var currentTaskLines: [String] = []
+                let canonicalTasks = Self.canonicalTasks20()
+                var completedTasks: [OptimizeTask] = []
+                var pendingLineBuffer = ""
+
+                func finalizeCurrentTask() {
+                    guard let taskName = currentTaskName else { return }
+                    let matchedTask = Self.resolveCompletedTask(
+                        taskName: taskName,
+                        category: currentCategory,
+                        details: currentTaskLines,
+                        canonicalTasks: canonicalTasks
+                    )
+                    completedTasks.append(matchedTask)
+                    continuation.yield(.completed(task: matchedTask))
+                }
+
+                do {
+                    for try await chunk in ptyStream {
+                        if Task.isCancelled { break }
+
+                        pendingLineBuffer += chunk
+                        let lines = pendingLineBuffer.components(separatedBy: "\n")
+                        // Retain trailing un-terminated piece
+                        pendingLineBuffer = lines.last ?? ""
+
+                        for line in lines.dropLast() {
+                            let cleanLine = Self.stripANSI(line).trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !cleanLine.isEmpty else { continue }
+
+                            continuation.yield(.line(raw: cleanLine))
+
+                            if cleanLine.hasPrefix("====") {
+                                finalizeCurrentTask()
+                                currentTaskName = nil
+                                currentTaskLines = []
+                            } else if cleanLine.hasPrefix("➤ ") {
+                                finalizeCurrentTask()
+                                let rawName = String(cleanLine.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+                                let category = Self.category(forActionOrName: rawName)
+                                currentTaskName = rawName
+                                currentCategory = category
+                                currentTaskLines = []
+                                continuation.yield(.started(taskName: rawName, category: category))
+                            } else if currentTaskName != nil {
+                                currentTaskLines.append(cleanLine)
+                            }
+                        }
+                    }
+
+                    // Process any final remaining line in buffer
+                    let finalClean = Self.stripANSI(pendingLineBuffer).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !finalClean.isEmpty {
+                        continuation.yield(.line(raw: finalClean))
+                        if finalClean.hasPrefix("====") {
+                            finalizeCurrentTask()
+                            currentTaskName = nil
+                            currentTaskLines = []
+                        } else if finalClean.hasPrefix("➤ ") {
+                            finalizeCurrentTask()
+                            let rawName = String(finalClean.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+                            let category = Self.category(forActionOrName: rawName)
+                            currentTaskName = rawName
+                            currentCategory = category
+                            currentTaskLines = []
+                            continuation.yield(.started(taskName: rawName, category: category))
+                        } else if currentTaskName != nil {
+                            currentTaskLines.append(finalClean)
+                        }
+                    }
+                    finalizeCurrentTask()
+                    currentTaskName = nil
+                    // Compute summary
+                    var applied = 0
+                    var unchanged = 0
+                    var attention = 0
+                    var skipped = 0
+                    var failed = 0
+
+                    for t in completedTasks {
+                        switch t.outcome {
+                        case .applied: applied += 1
+                        case .unchanged: unchanged += 1
+                        case .attention: attention += 1
+                        case .skipped: skipped += 1
+                        case .pending, .running: break
+                        }
+                        if t.status == .failed { failed += 1 }
+                    }
+
+                    let summary = OptimizeExecutionSummary(
+                        totalTasks: completedTasks.count,
+                        appliedCount: applied,
+                        unchangedCount: unchanged,
+                        attentionCount: attention,
+                        skippedCount: skipped,
+                        failedCount: failed,
+                        isDryRun: dryRun
+                    )
+                    continuation.yield(.finished(summary: summary))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
+
+    public static func resolveCompletedTask(
+        taskName: String,
+        category: OptimizeTaskCategory,
+        details: [String],
+        canonicalTasks: [OptimizeTask]
+    ) -> OptimizeTask {
+        var outcome: OptimizeTaskOutcome = .unchanged
+        let combinedDetails = details.joined(separator: " ").lowercased()
+
+        if combinedDetails.contains("broken") ||
+           combinedDetails.contains("attention") ||
+           combinedDetails.contains("corrupt") ||
+           combinedDetails.contains("need attention") ||
+           details.contains(where: { $0.contains("⚠") || $0.contains("✗") }) {
+            outcome = .attention
+        } else if combinedDetails.contains("skipped") ||
+                  combinedDetails.contains("unavailable") ||
+                  combinedDetails.contains("not available") {
+            outcome = .skipped
+        } else if combinedDetails.contains("flushed") ||
+                  combinedDetails.contains("refreshed") ||
+                  combinedDetails.contains("optimized") ||
+                  combinedDetails.contains("rebuilt") ||
+                  combinedDetails.contains("enabled") ||
+                  combinedDetails.contains("cleaned") ||
+                  combinedDetails.contains("compressed") ||
+                  combinedDetails.contains("would apply") ||
+                  details.contains(where: { $0.contains("✓") }) {
+            outcome = .applied
+        } else {
+            outcome = .unchanged
+        }
+
+        let message: String
+        if let firstDetail = details.first {
+            message = firstDetail
+                .replacingOccurrences(of: "^(→|◎|✓|✔|⊙|⚠|✗|\\-)\\s*", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            message = outcome.rawValue
+        }
+
+        let key = taskName.lowercased()
+        let matchedCat = category
+        var matchedTask: OptimizeTask? = nil
+
+        // 1. Direct or partial name match
+        for task in canonicalTasks {
+            let nameLower = task.name.lowercased()
+            if nameLower == key || nameLower.contains(key) || key.contains(nameLower) {
+                matchedTask = task
+                break
+            }
+        }
+
+        // 2. Action/id category-based prefix match (same as parseTasks)
+        if matchedTask == nil {
+            for task in canonicalTasks {
+                let nameLower = task.name.lowercased()
+                if Self.category(forActionOrName: task.id) == matchedCat &&
+                   task.category == matchedCat &&
+                   nameLower.prefix(6) == key.prefix(6) {
+                    matchedTask = task
+                    break
+                }
+            }
+        }
+
+        // 3. Fallback: match by catalog action name
+        if matchedTask == nil {
+            let catalogMapping: [String: String] = [
+                "dns & spotlight check": "system_maintenance",
+                "finder cache refresh": "cache_refresh",
+                "app state cleanup": "saved_state_cleanup",
+                "broken config repair": "fix_broken_configs",
+                "network cache refresh": "network_optimization",
+                "database optimization": "sqlite_vacuum",
+                "prevent finder .ds_store": "prevent_network_dsstore",
+                "legacy overrides": "legacy_overrides_audit",
+                "network stack refresh": "network_stack_optimize",
+                "permission repair": "disk_permissions_repair",
+                "spotlight optimization": "spotlight_index_optimize",
+                "spotlight orphan rules": "spotlight_orphan_rules_cleanup",
+                "periodic maintenance": "periodic_maintenance",
+                "shared file lists": "shared_file_list_repair",
+                "disk health": "disk_verify",
+                "login items": "login_items_audit",
+                "quarantine database cleanup": "quarantine_cleanup",
+                "launch agents cleanup": "launch_agents_cleanup",
+                "notifications": "notification_cleanup",
+                "usage data": "coreduet_cleanup"
+            ]
+
+            if let canonicalId = catalogMapping[key] {
+                matchedTask = canonicalTasks.first { $0.id == canonicalId }
+            }
+        }
+
+        let resolvedId = matchedTask?.id ?? UUID().uuidString
+        let resolvedName = matchedTask?.name ?? taskName
+        let resolvedCategory = matchedTask?.category ?? category
+
+        return OptimizeTask(
+            id: resolvedId,
+            name: resolvedName,
+            category: resolvedCategory,
+            status: .completed,
+            outcome: outcome,
+            message: message,
+            details: details
+        )
     }
 
     // MARK: - Diagnosis & Bottleneck Parsing
