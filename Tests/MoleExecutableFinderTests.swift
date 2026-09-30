@@ -26,5 +26,13 @@ func runMoleExecutableFinderTests() async throws {
     assert(cleanTarget.arguments.contains("--dry-run"), "Clean dry-run target must contain --dry-run")
     print("✓ testFindCleanExecutableReturnsValidTarget passed")
 
+    // 4. Verify optimize executable lookup
+    guard let optimizeTarget = finder.findOptimizeExecutable(dryRun: true) else {
+        fatalError("Expected to find optimize executable on system")
+    }
+    assert(FileManager.default.isExecutableFile(atPath: optimizeTarget.url.path), "Optimize binary must be executable")
+    assert(optimizeTarget.arguments.contains("--dry-run"), "Optimize dry-run target must contain --dry-run")
+    print("✓ testFindOptimizeExecutableReturnsValidTarget passed")
+
     print("All MoleExecutableFinder tests passed.")
 }

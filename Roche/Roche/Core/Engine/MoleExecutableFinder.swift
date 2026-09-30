@@ -227,4 +227,76 @@ public nonisolated struct MoleExecutableFinder: Sendable {
 
         return nil
     }
+
+    public func findOptimizeExecutable(dryRun: Bool = false) -> ExecutableTarget? {
+        let fileManager = FileManager.default
+        let optimizeArgs = dryRun ? ["optimize", "--dry-run"] : ["optimize"]
+
+        // 1. Embedded inside App Bundle (mole/mo or mole/bin/optimize.sh)
+        if let resourceURL = Bundle.main.resourceURL {
+            let bundledMo = resourceURL.appendingPathComponent("mole/mo")
+            if fileManager.isExecutableFile(atPath: bundledMo.path) {
+                return ExecutableTarget(url: bundledMo, arguments: optimizeArgs)
+            }
+
+            let bundledOptimizeSh = resourceURL.appendingPathComponent("mole/bin/optimize.sh")
+            if fileManager.isExecutableFile(atPath: bundledOptimizeSh.path) {
+                return ExecutableTarget(url: bundledOptimizeSh, arguments: dryRun ? ["--dry-run"] : [])
+            }
+        }
+
+        // 2. Direct mo in App Bundle root
+        if let bundleMo = Bundle.main.url(forResource: "mo", withExtension: nil),
+           fileManager.isExecutableFile(atPath: bundleMo.path) {
+            return ExecutableTarget(url: bundleMo, arguments: optimizeArgs)
+        }
+
+        // 3. Dynamic Homebrew optimize in Cellar
+        let cellarRoots = ["/opt/homebrew/Cellar/mole", "/usr/local/Cellar/mole"]
+        for cellar in cellarRoots {
+            if let versions = try? fileManager.contentsOfDirectory(atPath: cellar) {
+                for ver in versions.sorted().reversed() {
+                    let candidate = "\(cellar)/\(ver)/libexec/bin/optimize.sh"
+                    if fileManager.isExecutableFile(atPath: candidate) {
+                        return ExecutableTarget(url: URL(fileURLWithPath: candidate), arguments: dryRun ? ["--dry-run"] : [])
+                    }
+                }
+            }
+        }
+
+        // 4. Standard CLI installations (Homebrew symlink)
+        let cliCandidates = [
+            "/opt/homebrew/bin/mo",
+            "/usr/local/bin/mo",
+            "/opt/homebrew/bin/mole",
+            "/usr/local/bin/mole"
+        ]
+        for candidate in cliCandidates {
+            if fileManager.isExecutableFile(atPath: candidate) {
+                return ExecutableTarget(url: URL(fileURLWithPath: candidate), arguments: optimizeArgs)
+            }
+        }
+
+        // 5. Local vendor/mole fallback (Development)
+        let devVendorCandidates = [
+            "vendor/mole/mo",
+            "vendor/mole/bin/optimize.sh",
+            "../vendor/mole/mo",
+            "../vendor/mole/bin/optimize.sh",
+            "bin/mo"
+        ]
+        for candidate in devVendorCandidates {
+            let resolvedPath = URL(fileURLWithPath: candidate).standardized.path
+            if fileManager.isExecutableFile(atPath: resolvedPath) {
+                let url = URL(fileURLWithPath: resolvedPath)
+                if candidate.contains("optimize.sh") {
+                    return ExecutableTarget(url: url, arguments: dryRun ? ["--dry-run"] : [])
+                } else {
+                    return ExecutableTarget(url: url, arguments: optimizeArgs)
+                }
+            }
+        }
+
+        return nil
+    }
 }

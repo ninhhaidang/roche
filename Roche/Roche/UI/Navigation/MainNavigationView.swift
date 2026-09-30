@@ -128,6 +128,8 @@ public struct MainNavigationView: View {
                     SystemMonitorView(service: service)
                 case .cleaner:
                     CleanerView(service: cleanEngine)
+                case .optimizer:
+                    SystemOptimizerView()
                 case .settings:
                     SettingsView(telemetryService: service)
                 }
