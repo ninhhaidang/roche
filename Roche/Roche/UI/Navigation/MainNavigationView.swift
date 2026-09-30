@@ -130,6 +130,8 @@ public struct MainNavigationView: View {
                     CleanerView(service: cleanEngine)
                 case .uninstaller:
                     AppUninstallerView()
+                case .optimizer:
+                    SystemOptimizerView()
                 case .settings:
                     SettingsView(telemetryService: service)
                 }

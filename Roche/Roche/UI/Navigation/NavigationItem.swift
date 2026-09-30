@@ -5,6 +5,7 @@ public nonisolated enum NavigationItem: String, CaseIterable, Identifiable, Send
     case monitor
     case cleaner
     case uninstaller
+    case optimizer
     case settings
 
     public var id: String { rawValue }
@@ -15,6 +16,7 @@ public nonisolated enum NavigationItem: String, CaseIterable, Identifiable, Send
         case .monitor: return "Giám sát"
         case .cleaner: return "Dọn dẹp"
         case .uninstaller: return "Gỡ ứng dụng"
+        case .optimizer: return "Tối ưu hóa"
         case .settings: return "Cài đặt"
         }
     }
@@ -25,6 +27,7 @@ public nonisolated enum NavigationItem: String, CaseIterable, Identifiable, Send
         case .monitor: return "cpu"
         case .cleaner: return "bubbles.and.sparkles"
         case .uninstaller: return "trash"
+        case .optimizer: return "bolt.fill"
         case .settings: return "gearshape"
         }
     }
