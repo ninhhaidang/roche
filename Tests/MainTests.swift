@@ -23,6 +23,8 @@ struct AllTestsRunner {
             try await runCleanEngineExecutionTests()
             print("\n--- Running MoleExecutableFinder Tests ---")
             try await runMoleExecutableFinderTests()
+            print("\n--- Running UninstallEngine Tests ---")
+            try await runUninstallEngineTests()
 
             print("\n===============================")
             print("ALL SUITES PASSED SUCCESSFULLY!")

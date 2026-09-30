@@ -35,6 +35,14 @@ public protocol SubprocessRunning: Sendable {
         timeout: TimeInterval,
         onSpawn: (@Sendable (pid_t) -> Void)?
     ) async throws -> SubprocessOutput
+    func execute(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String]?,
+        timeout: TimeInterval,
+        stdinData: Data?,
+        onSpawn: (@Sendable (pid_t) -> Void)?
+    ) async throws -> SubprocessOutput
 }
 
 extension SubprocessRunning {
@@ -49,7 +57,59 @@ extension SubprocessRunning {
             arguments: arguments,
             environment: environment,
             timeout: timeout,
+            stdinData: nil,
             onSpawn: nil
+        )
+    }
+
+    public func execute(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String]?,
+        timeout: TimeInterval,
+        onSpawn: (@Sendable (pid_t) -> Void)?
+    ) async throws -> SubprocessOutput {
+        try await execute(
+            executableURL: executableURL,
+            arguments: arguments,
+            environment: environment,
+            timeout: timeout,
+            stdinData: nil,
+            onSpawn: onSpawn
+        )
+    }
+
+    public func execute(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String]?,
+        timeout: TimeInterval,
+        stdinData: Data?
+    ) async throws -> SubprocessOutput {
+        try await execute(
+            executableURL: executableURL,
+            arguments: arguments,
+            environment: environment,
+            timeout: timeout,
+            stdinData: stdinData,
+            onSpawn: nil
+        )
+    }
+
+    public func execute(
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String]?,
+        timeout: TimeInterval,
+        stdinData: Data?,
+        onSpawn: (@Sendable (pid_t) -> Void)?
+    ) async throws -> SubprocessOutput {
+        try await execute(
+            executableURL: executableURL,
+            arguments: arguments,
+            environment: environment,
+            timeout: timeout,
+            onSpawn: onSpawn
         )
     }
 }
@@ -83,16 +143,19 @@ public final nonisolated class SubprocessRunner: SubprocessRunning {
         arguments: [String],
         environment: [String: String]? = nil,
         timeout: TimeInterval = 60.0,
+        stdinData: Data? = nil,
         onSpawn: (@Sendable (pid_t) -> Void)? = nil
     ) async throws -> SubprocessOutput {
         let process = Process()
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
+        let stdinPipe = Pipe()
 
         process.executableURL = executableURL
         process.arguments = arguments
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
+        process.standardInput = stdinPipe
 
         if let environment = environment {
             process.environment = environment
@@ -104,6 +167,12 @@ public final nonisolated class SubprocessRunner: SubprocessRunning {
             throw MoleError.processExecutionFailed(exitCode: -1, stderr: error.localizedDescription)
         }
 
+        if let stdinData = stdinData {
+            try? stdinPipe.fileHandleForWriting.write(contentsOf: stdinData)
+            try? stdinPipe.fileHandleForWriting.close()
+        } else {
+            try? stdinPipe.fileHandleForWriting.close()
+        }
         onSpawn?(process.processIdentifier)
 
         let terminateProcess: @Sendable () -> Void = {
