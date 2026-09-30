@@ -46,6 +46,32 @@ _Avoid_: Purge run, Delete task, Wipe
 A distinct bucket of reclaimable items such as developer artifacts, application caches, or system logs.
 _Avoid_: Clean type, Target, Group
 
+
+**App Uninstaller**:
+The capability discovering installed applications and removing their binaries and associated residual files.
+_Avoid_: App remover, Program deleter
+
+**System Optimization**:
+The execution of safe maintenance routines repairing system configurations, flushing DNS, and refreshing caches.
+_Avoid_: System tuneup, Speedup
+
+**Project Purge**:
+The scanning and purging of obsolete build artifacts (`node_modules`, `target`, `.build`) across developer directories.
+_Avoid_: Code cleaner, Repo wiper
+
+**Installer Cleanup**:
+The detection and removal of obsolete disk images and installer packages (`.dmg`, `.pkg`).
+_Avoid_: Package cleaner, File deleter
+
+**Cleanup History**:
+The structured audit trail recording past clean and uninstall actions with timestamps and reclaimed capacity.
+_Avoid_: Action log, History record
+
+### System Privileges
+
+**Privilege Escalation**:
+The secure macOS authorization mechanism prompting for administrator credentials to execute root-level maintenance tasks.
+_Avoid_: Root hack, Sudo bypass
 ### UI & Design System
 
 **Liquid Bento**:
